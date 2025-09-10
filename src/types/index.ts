@@ -112,8 +112,14 @@ export type CreateIssueLinkArgs = z.infer<typeof CreateIssueLinkSchema>;
  * Schema for getting a user's account ID
  */
 export const GetUserSchema = z.object({
-  email: z.string().email(),
-});
+  email: z.string().email().optional(),
+  name: z.string().min(1).optional(),
+}).refine(
+  (data) => data.email !== undefined || data.name !== undefined,
+  {
+    message: "Either email or name must be provided",
+  }
+);
 
 export type GetUserArgs = z.infer<typeof GetUserSchema>;
 

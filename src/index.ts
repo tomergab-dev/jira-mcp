@@ -47,7 +47,7 @@ class JiraServer {
   private readonly jiraService: JiraService;
   private readonly toolDefinitions = {
     get_user: {
-      description: "Get a user's account ID by their email address",
+      description: "Get a user's account ID by their email address or name",
       inputSchema: {
         type: "object",
         properties: {
@@ -55,8 +55,13 @@ class JiraServer {
             type: "string",
             description: "Email address of the user",
           },
+          name: {
+            type: "string",
+            description: "Display name or username of the user",
+          },
         },
-        required: ["email"],
+        required: [],
+        additionalProperties: false,
       },
     },
     get_project: {

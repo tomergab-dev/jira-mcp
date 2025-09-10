@@ -96,19 +96,31 @@ export class JiraService {
   }
 
   /**
-   * Get a user's account ID by email
+   * Get a user's account ID by email or name
    * @param args User lookup arguments
    * @returns User account ID
    */
-  async getUserAccountId({ email }: GetUserArgs): Promise<string> {
+  async getUserAccountId({ email, name }: GetUserArgs): Promise<string> {
     try {
+      const query = email || name!;
       const users = await this.client.searchUsers({
-        query: email,
+        query,
       });
 
-      const user = users.find((u: any) => u.emailAddress === email);
-      if (!user) {
-        throw new Error(`User with email "${email}" not found`);
+      let user;
+      if (email) {
+        user = users.find((u: any) => u.emailAddress === email);
+        if (!user) {
+          throw new Error(`User with email "${email}" not found`);
+        }
+      } else {
+        user = users.find((u: any) => 
+          u.displayName?.toLowerCase().includes(name!.toLowerCase()) ||
+          u.name?.toLowerCase().includes(name!.toLowerCase())
+        );
+        if (!user) {
+          throw new Error(`User with name "${name}" not found`);
+        }
       }
 
       return user.accountId;
