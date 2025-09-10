@@ -1,600 +1,208 @@
 # Jira MCP Server
 
-Enhanced Model Context Protocol server for interacting with Jira directly from Claude.
-
-This server allows [Model Context Protocol](https://github.com/modelcontextprotocol) enabled AI assistants like Claude to directly interact with your Jira instance to perform a wide range of project management tasks, including:
-
-- Retrieving project information and issues
-- Creating and updating issues and subtasks
-- Managing issue workflows and transitions
-- Creating issue links and dependencies
-- Adding comments and managing issue fields
-- User management and assignment
-- Bulk operations for efficient issue management
+A perfect Model Context Protocol (MCP) server for interacting with Jira. This server provides AI assistants with the ability to manage Jira issues, users, and custom fields seamlessly.
 
 ## Features
 
-- **Full Jira API Integration**: Comprehensive access to Jira functionality
-- **Enhanced Formatting**: Improved Markdown to Atlassian Document Format (ADF) conversion with support for code blocks and inline formatting
-- **Input Validation**: Robust schema validation using Zod
-- **Improved Error Handling**: Detailed error messages and graceful error recovery
-- **Custom Field Support**: Easy configuration for working with custom Jira fields
-- **Status Transitions**: Advanced workflow management
-- **Bulk Operations**: Support for bulk issue operations (updates, deletions)
-- **Granular Label/Component Management**: Add, remove, or replace labels and components
-- **Configurable Logging**: Control log verbosity with environment variables
-
-## Prerequisites
-
-- Node.js 18 or higher
-- Jira Cloud or Server instance
-- Jira API token (for Cloud) or username/password (for Server)
-- Claude Desktop or other MCP-compatible AI assistant
+- ✅ **Get Issues**: Retrieve issues by project key or JQL query with full custom fields support
+- ✅ **Create Issues**: Create new issues with all standard and custom fields
+- ✅ **Update Issues**: Update existing issues including status transitions
+- ✅ **Get Users**: Search for users by name or email
+- ✅ **Custom Fields**: Full support for retrieving and setting custom fields
+- ✅ **Error Handling**: Comprehensive error handling with helpful messages
+- ✅ **Type Safety**: Full TypeScript support with proper typing
 
 ## Installation
 
-1. Clone this repository:
-   ```bash
-   git clone https://github.com/yourusername/jira-server.git
-   cd jira-server
-   ```
-
+1. Clone this repository
 2. Install dependencies:
    ```bash
    npm install
    ```
-
-3. Set up environment variables:
+3. Copy the environment example file:
    ```bash
    cp .env.example .env
    ```
-
-4. Edit the `.env` file with your Jira credentials:
-   ```
-   JIRA_HOST=your-instance.atlassian.net
+4. Configure your Jira credentials in `.env`:
+   ```env
+   JIRA_HOST=your-domain.atlassian.net
    JIRA_EMAIL=your-email@example.com
-   JIRA_API_TOKEN=your-api-token
+   JIRA_API_TOKEN=your-api-token-here
+   JIRA_API_VERSION=3
    ```
 
-5. Build the server:
-   ```bash
-   npm run build
-   ```
+## Getting Your Jira API Token
+
+1. Go to [Atlassian Account Settings](https://id.atlassian.com/manage-profile/security/api-tokens)
+2. Click "Create API token"
+3. Enter a label for your token
+4. Copy the generated token to your `.env` file
+
+## Building
+
+```bash
+npm run build
+```
 
 ## Usage
 
-### Starting the Server
+### As an MCP Server
 
-```bash
-npm start
-```
+Add this to your MCP client configuration:
 
-### Development Mode
-
-For development with auto-reload:
-
-```bash
-npm run dev
-```
-
-### Linting and Formatting
-
-```bash
-# Run ESLint
-npm run lint
-
-# Format code with Prettier
-npm run format
-```
-
-### Configuring Claude Desktop
-
-To use this MCP server with Claude Desktop:
-
-1. Locate your Claude Desktop configuration file:
-
-   - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-   - Windows: `%APPDATA%/Claude/claude_desktop_config.json`
-   - Linux: `~/.config/Claude/claude_desktop_config.json`
-
-2. Add the Jira MCP server to your configuration:
-
-   ```json
-   {
-     "mcp_servers": [
-       {
-         "name": "jira-server",
-         "command": "npm start",
-         "cwd": "/absolute/path/to/jira-server",
-         "env": {
-           "JIRA_HOST": "your-instance.atlassian.net",
-           "JIRA_EMAIL": "your-email@example.com",
-           "JIRA_API_TOKEN": "your-api-token",
-           "JIRA_API_VERSION": "3",
-           "JIRA_CUSTOM_FIELDS": "summary,description,status,priority,assignee,issuetype,parent,subtasks",
-           "LOG_LEVEL": "info"
-         }
-       }
-     ]
-   }
-   ```
-
-   Replace `/absolute/path/to/jira-server` with the absolute path to your cloned repository.
-
-3. Restart Claude Desktop to apply the changes.
-
-## Available Tools
-
-**NEW: Cross-Project Search Capability**
-
-The server now supports searching for issues across all projects without requiring a specific project filter. This enables powerful cross-project queries and analytics.
-
-### Project Information
-
-```typescript
-// Get project information
+```json
 {
-  projectKey: "PROJECT",
-  expand: ["lead", "description", "url"] // Optional
-}
-
-// List all available issue types
-// No parameters required
-
-// List all available Jira fields
-// No parameters required
-
-// List all available issue link types
-// No parameters required
-
-// Search issues across all projects (NEW)
-{
-  jql: "assignee = currentUser() AND status != 'Done'",
-  maxResults: 100, // Optional
-  fields: ["summary", "project", "status", "assignee"] // Optional
-}
-```
-
-### User Management
-
-```typescript
-// Get user's account ID by email
-{
-  email: "user@example.com"
-}
-
-// Add a watcher to an issue
-{
-  issueKey: "PROJECT-123",
-  username: "user@example.com"
-}
-```
-
-### Issue Retrieval
-
-```typescript
-// Get all issues in a project
-{
-  projectKey: "PROJECT"
-}
-
-// Get issues with JQL filtering within a project
-{
-  projectKey: "PROJECT",
-  jql: "status = 'In Progress' AND assignee = currentUser()"
-}
-
-// Search issues across ALL projects using JQL (NEW)
-{
-  jql: "status = 'In Progress' AND assignee = currentUser()"
-}
-
-// Search for issues assigned to a specific user across all projects (NEW)
-{
-  jql: "assignee = 'user@example.com'"
-}
-
-// Search for issues with specific labels across all projects (NEW)
-{
-  jql: "labels = 'urgent' OR labels = 'bug'"
-}
-
-// Get more issues at once (default: 50)
-{
-  projectKey: "PROJECT",
-  maxResults: 100
-}
-
-// Get specific fields
-{
-  projectKey: "PROJECT",
-  fields: ["summary", "status", "assignee", "labels"]
-}
-```
-
-### Cross-Project Issue Search
-
-```typescript
-// Use the dedicated search_issues tool for cross-project searches
-{
-  jql: "project IN ('PROJ1', 'PROJ2') AND status = 'Open'"
-}
-
-// Search by issue type across all projects
-{
-  jql: "issuetype = 'Bug' AND status != 'Done'"
-}
-
-// Search by reporter across all projects
-{
-  jql: "reporter = 'manager@example.com' AND created >= -7d"
-}
-
-// Complex cross-project search
-{
-  jql: "(priority = 'High' OR priority = 'Critical') AND assignee = currentUser() AND status IN ('To Do', 'In Progress')",
-  maxResults: 25,
-  fields: ["summary", "project", "status", "priority"]
-}
-```
-
-### Issue Creation
-
-```typescript
-// Create a standard issue
-{
-  projectKey: "PROJECT",
-  summary: "Issue title",
-  issueType: "Task",  // or "Story", "Bug", etc.
-  description: "Detailed description",
-  assignee: "user@example.com",
-  labels: ["frontend", "urgent"],
-  components: ["ui", "api"],
-  priority: "High"
-}
-
-// Create a subtask
-{
-  projectKey: "PROJECT",
-  summary: "Subtask title",
-  issueType: "Subtask",
-  description: "Subtask details",
-  assignee: "user@example.com",
-  parent: "PROJECT-123"
-}
-```
-
-### Issue Updates
-
-```typescript
-// Update issue fields
-{
-  issueKey: "PROJECT-123",
-  summary: "Updated title",
-  description: "New description",
-  assignee: "user@example.com",
-  status: "In Progress",
-  priority: "High", 
-  labels: ["frontend", "updated"],
-  components: ["ui"]
-}
-```
-
-### Bulk Issue Updates
-
-```typescript
-// Update multiple issues with the same values
-{
-  issueKeys: ["PROJECT-123", "PROJECT-124", "PROJECT-125"],
-  priority: "High",
-  status: "In Progress"
-}
-
-// Add labels to multiple issues (preserves existing labels)
-{
-  issueKeys: ["PROJECT-123", "PROJECT-124", "PROJECT-125"],
-  addLabels: ["urgent", "sprint-5"]
-}
-
-// Remove labels from multiple issues
-{
-  issueKeys: ["PROJECT-123", "PROJECT-124", "PROJECT-125"],
-  removeLabels: ["outdated"]
-}
-
-// Replace all labels on multiple issues
-{
-  issueKeys: ["PROJECT-123", "PROJECT-124", "PROJECT-125"],
-  setLabels: ["frontend", "sprint-6"]
-}
-
-// Add components to multiple issues
-{
-  issueKeys: ["PROJECT-123", "PROJECT-124", "PROJECT-125"],
-  addComponents: ["api"]
-}
-
-// Complex bulk update
-{
-  issueKeys: ["PROJECT-123", "PROJECT-124", "PROJECT-125"],
-  status: "In Progress",
-  priority: "High",
-  assignee: "developer@example.com",
-  addLabels: ["sprint-6"],
-  removeLabels: ["backlog"],
-  addComponents: ["api"]
-}
-```
-
-### Issue Linking
-
-```typescript
-// Create issue link
-{
-  linkType: "Blocks",  // from list_link_types
-  inwardIssueKey: "PROJECT-124",  // blocked issue
-  outwardIssueKey: "PROJECT-123",  // blocking issue
-  comment: "Blocking due to dependency" // Optional
-}
-```
-
-### Issue Deletion
-
-```typescript
-// Delete single issue
-{
-  issueKey: "PROJECT-123"
-}
-
-// Delete issue with subtasks
-{
-  issueKey: "PROJECT-123",
-  deleteSubtasks: true
-}
-
-// Delete multiple issues
-{
-  issueKeys: ["PROJECT-123", "PROJECT-124"]
-}
-```
-
-### Workflow Management
-
-```typescript
-// Get available transitions
-{
-  issueKey: "PROJECT-123"
-}
-
-// Transition an issue by transition name
-{
-  issueKey: "PROJECT-123",
-  transitionName: "In Progress"
-}
-
-// Transition an issue by transition ID with comment
-{
-  issueKey: "PROJECT-123",
-  transitionId: "31",
-  comment: "Moving to in progress as development has started"
-}
-
-// Transition with additional fields
-{
-  issueKey: "PROJECT-123",
-  transitionName: "Done",
-  fields: {
-    "resolution": { 
-      "name": "Fixed" 
+  "mcpServers": {
+    "jira": {
+      "command": "node",
+      "args": ["/path/to/jira-mcp-server/build/index.js"],
+      "env": {
+        "JIRA_HOST": "your-domain.atlassian.net",
+        "JIRA_EMAIL": "your-email@example.com", 
+        "JIRA_API_TOKEN": "your-api-token-here"
+      }
     }
   }
 }
 ```
 
-### Issue Comments
-
-```typescript
-// Add a comment
-{
-  issueKey: "PROJECT-123",
-  body: "This is a comment with **bold** and *italic* formatting"
-}
-
-// Add a comment with visibility restrictions
-{
-  issueKey: "PROJECT-123",
-  body: "This comment is only visible to a specific role",
-  visibility: {
-    type: "role",
-    value: "Administrators"
-  }
-}
-```
-
-## Text Formatting
-
-The server supports enhanced Markdown-style formatting for descriptions and comments:
-
-- **Paragraphs**: Separated by blank lines
-- **Lists**: Use `- ` or `* ` for bullet points, or `1. ` for numbered lists
-- **Headers**: Use `#` syntax (`# Header 1`, `## Header 2`) or lines ending with `:` followed by a blank line
-- **Text Formatting**: Use `**bold**`, `*italic*`, and `` `code` ``
-- **Code Blocks**: Use triple backticks (` ``` `) for code blocks, with optional language specification
-
-Example:
-
-````markdown
-# Issue Description
-
-This issue needs to be addressed **urgently**.
-
-## Requirements:
-- Implement the API endpoint
-- Add proper error handling
-- Write unit tests
-
-Steps to reproduce:
-1. Navigate to the dashboard
-2. Click on the settings icon
-3. Observe the error message
-
-```javascript
-// Current problematic code:
-function getData() {
-  return fetch('/api/data').then(res => res.json());
-}
-```
-
-*Note*: This is blocking the release.
-````
-
-## Error Handling
-
-The server provides detailed error messages for:
-
-- Invalid parameters
-- Authentication issues
-- Missing required fields
-- Permission problems
-- Resource not found errors
-- API rate limits
-- Workflow validation errors
-
-## Logging
-
-You can control the verbosity of logging by setting the `LOG_LEVEL` environment variable:
-
-```
-LOG_LEVEL=debug   # Most verbose, shows all details
-LOG_LEVEL=info    # Default, shows general information
-LOG_LEVEL=warn    # Shows only warnings and errors
-LOG_LEVEL=error   # Shows only errors
-```
-
-## Customization
-
-### Custom Fields
-
-To work with custom Jira fields, add them to the `JIRA_CUSTOM_FIELDS` environment variable:
-
-```
-JIRA_CUSTOM_FIELDS=summary,description,status,priority,assignee,issuetype,parent,subtasks,customfield_10001,customfield_10002
-```
-
-You can then use these custom fields in your requests:
-
-```typescript
-// Update with custom fields
-{
-  issueKey: "PROJECT-123",
-  customFields: {
-    "customfield_10001": "Custom value",
-    "customfield_10002": { "value": "Option 1" }
-  }
-}
-```
-
-### Field Types
-
-Different custom fields may require different formats:
-
-- **Text fields**: Simple string values
-- **Select/Option fields**: Object with `value` property
-- **User fields**: Object with `id` property (account ID)
-- **Multi-select fields**: Array of objects with `value` property
-- **Date fields**: String in ISO format
-
-Example:
-
-```typescript
-{
-  issueKey: "PROJECT-123",
-  customFields: {
-    "customfield_10001": "Text value",               // Text field
-    "customfield_10002": { "value": "Option 1" },    // Select field
-    "customfield_10003": { "id": "123456:abcdef" },  // User field
-    "customfield_10004": [                           // Multi-select field
-      { "value": "Option 1" },
-      { "value": "Option 2" }
-    ],
-    "customfield_10005": "2023-04-30"                // Date field
-  }
-}
-```
-
-## Development
-
-### Project Structure
-
-```
-jira-server/
-├── src/
-│   ├── index.ts             # Main server entry point
-│   ├── services/            # Service modules
-│   │   └── JiraService.ts   # Jira API integration
-│   ├── types/               # Type definitions
-│   │   └── index.ts         # Schema definitions
-│   └── utils/               # Utility functions
-│       └── formatters.ts    # Text formatting utilities
-├── build/                   # Compiled JavaScript
-├── package.json             # Project dependencies
-├── tsconfig.json            # TypeScript configuration
-└── .env.example             # Environment variables template
-```
-
-### Testing Tools
-
-You can use the MCP Inspector to test the server directly:
+### Testing with Inspector
 
 ```bash
 npm run inspector
 ```
 
-This will start an interactive session where you can test calling tools and see their responses.
+## Available Tools
 
-### Contributing
+### \`get_issues\`
+Retrieve issues from Jira by project key or JQL query.
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+**Parameters:**
+- \`projectKey\` (string, optional): Project key to get issues from
+- \`jql\` (string, optional): JQL query to filter issues
+- \`maxResults\` (number, optional): Maximum results (1-100, default: 50)
+- \`fields\` (array, optional): Specific fields to retrieve including custom fields
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Run tests and linting (`npm run lint`)
-5. Commit your changes (`git commit -m 'Add some amazing feature'`)
-6. Push to the branch (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
+**Example:**
+```json
+{
+  "projectKey": "PROJ",
+  "maxResults": 10,
+  "fields": ["summary", "status", "customfield_10001"]
+}
+```
 
-## Troubleshooting
+### \`create_issue\`
+Create a new issue in Jira with support for custom fields.
 
-### Common Issues
+**Parameters:**
+- \`projectKey\` (string, required): Project key where issue will be created
+- \`summary\` (string, required): Issue summary/title  
+- \`issueType\` (string, required): Issue type (e.g., 'Task', 'Story', 'Bug')
+- \`description\` (string, optional): Issue description
+- \`assignee\` (string, optional): Assignee email address
+- \`labels\` (array, optional): Labels to add
+- \`components\` (array, optional): Components to add
+- \`priority\` (string, optional): Priority level
+- \`parent\` (string, optional): Parent issue key for subtasks
+- \`customFields\` (object, optional): Custom fields as key-value pairs
 
-1. **Authentication Failures**
-   - Ensure your JIRA_HOST, JIRA_EMAIL, and JIRA_API_TOKEN are correct
-   - For Cloud instances, verify API token was generated at https://id.atlassian.com/manage-profile/security/api-tokens
+**Example:**
+```json
+{
+  "projectKey": "PROJ",
+  "summary": "New feature request",
+  "issueType": "Story",
+  "description": "Detailed description here",
+  "assignee": "user@example.com",
+  "labels": ["feature", "urgent"],
+  "customFields": {
+    "customfield_10001": "Custom value"
+  }
+}
+```
 
-2. **Permission Errors**
-   - Ensure the user associated with the API token has appropriate permissions in Jira
+### \`update_issue\`
+Update an existing issue including custom fields.
 
-3. **Invalid Field Errors**
-   - Use the `list_fields` tool to get the correct field IDs
-   - Check the format of custom fields (some require objects instead of simple values)
+**Parameters:**
+- \`issueKey\` (string, required): Key of issue to update (e.g., 'PROJ-123')
+- \`summary\` (string, optional): Updated summary
+- \`description\` (string, optional): Updated description
+- \`assignee\` (string, optional): Updated assignee email
+- \`status\` (string, optional): New status (will trigger transition)
+- \`priority\` (string, optional): Updated priority
+- \`labels\` (array, optional): Updated labels
+- \`components\` (array, optional): Updated components  
+- \`customFields\` (object, optional): Custom fields to update
 
-4. **Connection Issues**
-   - Check network connectivity to your Jira instance
-   - Verify firewall settings allow outbound connections
+**Example:**
+```json
+{
+  "issueKey": "PROJ-123",
+  "summary": "Updated summary",
+  "status": "In Progress",
+  "customFields": {
+    "customfield_10001": "Updated custom value"
+  }
+}
+```
 
-5. **Rate Limiting**
-   - If you encounter rate limiting, add delays between bulk operations or reduce batch sizes
+### \`get_users\`
+Search for users in Jira by name or email.
+
+**Parameters:**
+- \`query\` (string, required): Search query (name, email, or username)
+- \`maxResults\` (number, optional): Maximum results (1-50, default: 10)
+
+**Example:**
+```json
+{
+  "query": "john@example.com",
+  "maxResults": 5
+}
+```
+
+### \`get_custom_fields\`
+Get all custom fields available in the Jira instance.
+
+**Parameters:** None
+
+**Example:**
+```json
+{}
+```
+
+## Error Handling
+
+The server provides comprehensive error handling:
+
+- **Authentication Errors**: Clear messages when credentials are invalid
+- **Permission Errors**: Helpful messages when access is denied
+- **Validation Errors**: Detailed parameter validation with specific error messages
+- **Not Found Errors**: Clear messages when resources don't exist
+- **JQL Errors**: Helpful messages for invalid JQL queries
+
+## Development
+
+### Scripts
+
+- \`npm run build\`: Build the TypeScript project
+- \`npm run watch\`: Watch for changes and rebuild
+- \`npm run dev\`: Run in development mode with nodemon
+- \`npm run lint\`: Run ESLint
+- \`npm run format\`: Format code with Prettier
+- \`npm run inspector\`: Test with MCP inspector
+
+### Project Structure
+
+```
+src/
+├── index.ts           # Main MCP server implementation
+└── services/
+    └── JiraService.ts # Jira API service with all functionality
+```
 
 ## License
 
 MIT
-
-## References
-
-- [Model Context Protocol](https://github.com/modelcontextprotocol)
-- [Jira REST API Documentation](https://docs.atlassian.com/software/jira/docs/api/REST/latest)
-- [Jira REST API Examples](https://developer.atlassian.com/server/jira/platform/jira-rest-api-examples/)
-- [Atlassian Document Format (ADF)](https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/)
-- [Jira Client Library](https://github.com/jira-node/node-jira-client)
-- [Zod Schema Validation](https://github.com/colinhacks/zod) 

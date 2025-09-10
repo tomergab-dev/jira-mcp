@@ -1,65 +1,114 @@
 import JiraClient from "jira-client";
 import * as dotenv from "dotenv";
-import { convertToADF, formatJQL } from "../utils/formatters.js";
-import type {
-  CreateIssueArgs,
-  GetIssuesArgs,
-  SearchIssuesArgs,
-  UpdateIssueArgs,
-  GetUserArgs,
-  CreateIssueLinkArgs,
-  DeleteIssueArgs,
-  BulkDeleteIssuesArgs,
-  BulkUpdateIssuesArgs,
-  TransitionIssueArgs,
-  AddCommentArgs,
-  GetTransitionsArgs,
-  AddWatcherArgs,
-  GetProjectArgs,
-  IssueType,
-  JiraField,
-  IssueLinkType,
-} from "../types/index.js";
 
-// Load environment variables
 dotenv.config();
 
-/**
- * Initialize logging level
- */
-const LOG_LEVEL = process.env.LOG_LEVEL || "info";
-
-/**
- * Custom logging function that respects log level
- */
-function log(message: string, level = "info"): void {
-  const levels = {
-    debug: 0,
-    info: 1,
-    warn: 2,
-    error: 3,
+export interface JiraIssue {
+  key: string;
+  id: string;
+  fields: {
+    summary: string;
+    description?: any;
+    status: {
+      name: string;
+      id: string;
+    };
+    priority?: {
+      name: string;
+      id: string;
+    };
+    assignee?: {
+      accountId: string;
+      displayName: string;
+      emailAddress: string;
+    };
+    issuetype: {
+      name: string;
+      id: string;
+    };
+    labels: string[];
+    components: Array<{
+      name: string;
+      id: string;
+    }>;
+    [key: string]: any;
   };
-
-  const configuredLevel = levels[LOG_LEVEL as keyof typeof levels] || 1;
-  const messageLevel = levels[level as keyof typeof levels] || 1;
-
-  if (messageLevel >= configuredLevel) {
-    const prefix = `[${level.toUpperCase()}]`;
-    console.log(`${prefix} ${message}`);
-  }
 }
 
-/**
- * Service class for interacting with the Jira API
- */
+export interface JiraUser {
+  accountId: string;
+  displayName: string;
+  emailAddress: string;
+  active: boolean;
+}
+
+export interface CustomField {
+  id: string;
+  name: string;
+  custom: boolean;
+  schema?: {
+    type: string;
+    items?: string;
+    system?: string;
+    custom?: string;
+    customId?: number;
+  };
+}
+
+export interface GetIssuesArgs {
+  projectKey?: string;
+  jql?: string;
+  maxResults?: number;
+  fields?: string[];
+}
+
+export interface CreateIssueArgs {
+  projectKey: string;
+  summary: string;
+  issueType: string;
+  description?: string;
+  assignee?: string;
+  labels?: string[];
+  components?: string[];
+  priority?: string;
+  parent?: string;
+  customFields?: Record<string, any>;
+}
+
+export interface UpdateIssueArgs {
+  issueKey: string;
+  summary?: string;
+  description?: string;
+  assignee?: string;
+  status?: string;
+  priority?: string;
+  labels?: string[];
+  components?: string[];
+  customFields?: Record<string, any>;
+}
+
+export interface GetUsersArgs {
+  query: string;
+  maxResults?: number;
+}
+
 export class JiraService {
   private client: JiraClient;
-  private readonly defaultFields: string[];
+  private readonly defaultFields = [
+    "summary",
+    "description", 
+    "status",
+    "priority",
+    "assignee",
+    "issuetype",
+    "labels",
+    "components",
+    "parent",
+    "subtasks",
+    "created",
+    "updated"
+  ];
 
-  /**
-   * Creates a new JiraService instance
-   * @throws Error if required environment variables are missing
-   */
   constructor() {
     const host = process.env.JIRA_HOST;
     const email = process.env.JIRA_EMAIL;
@@ -68,7 +117,7 @@ export class JiraService {
 
     if (!host || !email || !apiToken) {
       throw new Error(
-        "Missing required environment variables: JIRA_HOST, JIRA_EMAIL, and JIRA_API_TOKEN are required",
+        "Missing required environment variables: JIRA_HOST, JIRA_EMAIL, and JIRA_API_TOKEN must be set"
       );
     }
 
@@ -80,202 +129,47 @@ export class JiraService {
       apiVersion,
       strictSSL: true,
     });
-
-    this.defaultFields = (
-      process.env.JIRA_CUSTOM_FIELDS?.split(",") || [
-        "summary",
-        "description",
-        "status",
-        "priority",
-        "assignee",
-        "issuetype",
-        "parent",
-        "subtasks",
-      ]
-    ).map((field) => field.trim());
   }
 
-  /**
-   * Get a user's account ID by email or name
-   * @param args User lookup arguments
-   * @returns User account ID
-   */
-  async getUserAccountId({ email, name }: GetUserArgs): Promise<string> {
+  async getIssues(args: GetIssuesArgs): Promise<JiraIssue[]> {
     try {
-      const query = email || name!;
-      const users = await this.client.searchUsers({
-        query,
-      });
-
-      let user;
-      if (email) {
-        user = users.find((u: any) => u.emailAddress === email);
-        if (!user) {
-          throw new Error(`User with email "${email}" not found`);
-        }
-      } else {
-        user = users.find((u: any) => 
-          u.displayName?.toLowerCase().includes(name!.toLowerCase()) ||
-          u.name?.toLowerCase().includes(name!.toLowerCase())
-        );
-        if (!user) {
-          throw new Error(`User with name "${name}" not found`);
-        }
-      }
-
-      return user.accountId;
-    } catch (error: any) {
-      if (error.statusCode === 401) {
-        throw new Error("Authentication failed. Check your Jira credentials.");
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * List all issue types available in the Jira instance
-   * @returns Array of issue types
-   */
-  async listIssueTypes(): Promise<IssueType[]> {
-    try {
-      const issueTypes = await this.client.listIssueTypes();
-      return issueTypes.map((type: any) => ({
-        id: type.id,
-        name: type.name,
-        description: type.description,
-        subtask: type.subtask,
-        iconUrl: type.iconUrl,
-      }));
-    } catch (error: any) {
-      if (error.statusCode === 401) {
-        throw new Error("Authentication failed. Check your Jira credentials.");
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * List all fields available in the Jira instance
-   * @returns Array of field definitions
-   */
-  async listFields(): Promise<JiraField[]> {
-    try {
-      const fields = await this.client.listFields();
-      return fields.map((field: any) => ({
-        id: field.id,
-        name: field.name,
-        custom: field.custom,
-        orderable: field.orderable,
-        navigable: field.navigable,
-        searchable: field.searchable,
-        clauseNames: field.clauseNames || [],
-        schema: field.schema,
-      }));
-    } catch (error: any) {
-      if (error.statusCode === 401) {
-        throw new Error("Authentication failed. Check your Jira credentials.");
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * List all issue link types available in the Jira instance
-   * @returns Array of link types
-   */
-  async listLinkTypes(): Promise<IssueLinkType[]> {
-    try {
-      const response = await this.client.listIssueLinkTypes();
-      return response.issueLinkTypes.map((type: any) => ({
-        id: type.id,
-        name: type.name,
-        inward: type.inward,
-        outward: type.outward,
-        self: type.self,
-      }));
-    } catch (error: any) {
-      if (error.statusCode === 401) {
-        throw new Error("Authentication failed. Check your Jira credentials.");
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * Get project information
-   * @param args Project key and optional expand parameters
-   * @returns Project data
-   */
-  async getProject({ projectKey, expand }: GetProjectArgs): Promise<any> {
-    try {
-      const options: any = {};
-      if (expand && expand.length > 0) {
-        options.expand = expand.join(",");
-      }
-
-      const project = await this.client.getProject(projectKey);
-      return project;
-    } catch (error: any) {
-      if (error.statusCode === 401) {
-        throw new Error("Authentication failed. Check your Jira credentials.");
-      }
-      if (error.statusCode === 404) {
-        throw new Error(`Project ${projectKey} not found`);
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * Get issues in a project, optionally filtered by JQL
-   * @param args Query parameters
-   * @returns Array of issues
-   */
-  async getIssues({
-    projectKey,
-    jql,
-    maxResults = 50,
-    fields,
-  }: GetIssuesArgs): Promise<any[]> {
-    try {
+      const { projectKey, jql, maxResults = 50, fields } = args;
+      
       let finalJql: string;
-
-      if (projectKey) {
-        // Project-specific search
-        const baseJql = jql || "";
-        finalJql = baseJql
-          ? formatJQL(`project = \${projectKey} AND ${baseJql}`, { projectKey })
-          : formatJQL("project = ${projectKey}", { projectKey });
+      if (projectKey && jql) {
+        finalJql = `project = "${projectKey}" AND (${jql})`;
+      } else if (projectKey) {
+        finalJql = `project = "${projectKey}"`;
+      } else if (jql) {
+        finalJql = jql;
       } else {
-        // Cross-project search - use JQL directly
-        finalJql = jql!;
+        throw new Error("Either projectKey or jql must be provided");
       }
 
-      const finalFields = fields || this.defaultFields;
-
+      const fieldsToUse = fields || this.defaultFields;
+      
       const response = await this.client.searchJira(finalJql, {
         maxResults,
-        fields: finalFields,
+        fields: fieldsToUse,
+        expand: ["names", "schema"]
       });
 
       return response.issues || [];
     } catch (error: any) {
-      if (error.statusCode === 400) {
-        throw new Error(`Invalid JQL query: ${error.message}`);
-      }
       if (error.statusCode === 401) {
         throw new Error("Authentication failed. Check your Jira credentials.");
       }
-      throw error;
+      if (error.statusCode === 400) {
+        throw new Error(`Invalid JQL query: ${error.message}`);
+      }
+      if (error.statusCode === 403) {
+        throw new Error("Permission denied. Check your Jira permissions.");
+      }
+      throw new Error(`Failed to get issues: ${error.message}`);
     }
   }
 
-  /**
-   * Create a new issue or subtask
-   * @param args Issue creation parameters
-   * @returns Created issue data
-   */
-  async createIssue(args: CreateIssueArgs): Promise<any> {
+  async createIssue(args: CreateIssueArgs): Promise<JiraIssue> {
     try {
       const {
         projectKey,
@@ -287,67 +181,47 @@ export class JiraService {
         components,
         priority,
         parent,
-        customFields = {},
+        customFields = {}
       } = args;
 
-      // Prepare the issue data
       const issueData: any = {
         fields: {
-          project: {
-            key: projectKey,
-          },
+          project: { key: projectKey },
           summary,
-          issuetype: {
-            name: issueType,
-          },
-          ...customFields,
-        },
+          issuetype: { name: issueType },
+          ...customFields
+        }
       };
 
-      // Add description if provided
       if (description) {
-        issueData.fields.description = convertToADF(description);
+        issueData.fields.description = this.convertToADF(description);
       }
 
-      // Add parent for subtasks
       if (parent) {
-        issueData.fields.parent = {
-          key: parent,
-        };
+        issueData.fields.parent = { key: parent };
       }
 
-      // Add assignee if provided
       if (assignee) {
-        try {
-          const accountId = await this.getUserAccountId({ email: assignee });
-          issueData.fields.assignee = {
-            id: accountId,
-          };
-        } catch (error) {
-          // If user lookup fails, continue without assignee
-          log(`Could not find user with email ${assignee}: ${error}`, "warn");
-        }
+        const user = await this.findUserByEmail(assignee);
+        issueData.fields.assignee = { id: user.accountId };
       }
 
-      // Add labels if provided
       if (labels && labels.length > 0) {
         issueData.fields.labels = labels;
       }
 
-      // Add components if provided
       if (components && components.length > 0) {
-        issueData.fields.components = components.map((name) => ({ name }));
+        issueData.fields.components = components.map(name => ({ name }));
       }
 
-      // Add priority if provided
       if (priority) {
-        issueData.fields.priority = {
-          name: priority,
-        };
+        issueData.fields.priority = { name: priority };
       }
 
-      const issue = await this.client.addNewIssue(issueData);
-      return issue;
+      const result = await this.client.addNewIssue(issueData);
+      
+      // Return the created issue with full details
+      return await this.client.findIssue(result.key, this.defaultFields.join(",")) as JiraIssue;
     } catch (error: any) {
       if (error.statusCode === 401) {
         throw new Error("Authentication failed. Check your Jira credentials.");
@@ -355,16 +229,14 @@ export class JiraService {
       if (error.statusCode === 400) {
         throw new Error(`Invalid issue data: ${error.message}`);
       }
-      throw error;
+      if (error.statusCode === 403) {
+        throw new Error("Permission denied. Check your Jira permissions.");
+      }
+      throw new Error(`Failed to create issue: ${error.message}`);
     }
   }
 
-  /**
-   * Update an existing issue
-   * @param args Issue update parameters
-   * @returns Updated issue data
-   */
-  async updateIssue(args: UpdateIssueArgs): Promise<any> {
+  async updateIssue(args: UpdateIssueArgs): Promise<JiraIssue> {
     try {
       const {
         issueKey,
@@ -375,67 +247,48 @@ export class JiraService {
         priority,
         labels,
         components,
-        customFields = {},
+        customFields = {}
       } = args;
 
       const updateData: any = {
-        fields: {
-          ...customFields,
-        },
+        fields: { ...customFields }
       };
 
-      // Add fields that are provided
       if (summary) {
         updateData.fields.summary = summary;
       }
 
       if (description) {
-        updateData.fields.description = convertToADF(description);
+        updateData.fields.description = this.convertToADF(description);
       }
 
       if (assignee) {
-        try {
-          const accountId = await this.getUserAccountId({ email: assignee });
-          updateData.fields.assignee = {
-            id: accountId,
-          };
-        } catch (error) {
-          // If user lookup fails, continue without changing assignee
-          log(`Could not find user with email ${assignee}: ${error}`, "warn");
-        }
+        const user = await this.findUserByEmail(assignee);
+        updateData.fields.assignee = { id: user.accountId };
       }
 
       if (priority) {
-        updateData.fields.priority = {
-          name: priority,
-        };
+        updateData.fields.priority = { name: priority };
       }
 
-      // Update labels if provided
       if (labels) {
         updateData.fields.labels = labels;
       }
 
-      // Update components if provided
       if (components) {
-        updateData.fields.components = components.map((name) => ({ name }));
+        updateData.fields.components = components.map(name => ({ name }));
       }
 
-      // If status is provided, use transitions instead of direct update
-      if (status) {
-        await this.transitionIssue({
-          issueKey,
-          transitionName: status,
-        });
-      }
-
+      // Update the issue
       await this.client.updateIssue(issueKey, updateData);
 
-      // Get the updated issue and return it
-      return await this.client.findIssue(
-        issueKey,
-        this.defaultFields.join(","),
-      );
+      // Handle status transition separately if provided
+      if (status) {
+        await this.transitionIssue(issueKey, status);
+      }
+
+      // Return the updated issue
+      return await this.client.findIssue(issueKey, this.defaultFields.join(",")) as JiraIssue;
     } catch (error: any) {
       if (error.statusCode === 401) {
         throw new Error("Authentication failed. Check your Jira credentials.");
@@ -446,461 +299,119 @@ export class JiraService {
       if (error.statusCode === 400) {
         throw new Error(`Invalid update data: ${error.message}`);
       }
-      throw error;
-    }
-  }
-
-  /**
-   * Bulk update multiple issues at once
-   * @param args Bulk update parameters
-   * @returns Success message and failures array
-   */
-  async bulkUpdateIssues(
-    args: BulkUpdateIssuesArgs,
-  ): Promise<{
-    message: string;
-    successes: string[];
-    failures: { issueKey: string; error: string }[];
-  }> {
-    const {
-      issueKeys,
-      summary,
-      description,
-      assignee,
-      status,
-      priority,
-      addLabels,
-      removeLabels,
-      setLabels,
-      addComponents,
-      removeComponents,
-      setComponents,
-      customFields,
-    } = args;
-
-    const successes: string[] = [];
-    const failures: { issueKey: string; error: string }[] = [];
-    let accountId: string | undefined;
-
-    // If assignee provided, get account ID once to reuse
-    if (assignee) {
-      try {
-        accountId = await this.getUserAccountId({ email: assignee });
-      } catch (error: any) {
-        log(
-          `Could not find user with email ${assignee}: ${error.message}`,
-          "warn",
-        );
-      }
-    }
-
-    // Process each issue
-    for (const issueKey of issueKeys) {
-      try {
-        // Get current issue data for fields that need merging (labels, components)
-        const currentIssue = await this.client.findIssue(
-          issueKey,
-          "labels,components",
-        );
-
-        const updateData: any = {
-          fields: {
-            ...customFields,
-          },
-        };
-
-        // Set simple fields
-        if (summary) {
-          updateData.fields.summary = summary;
-        }
-
-        if (description) {
-          updateData.fields.description = convertToADF(description);
-        }
-
-        if (accountId) {
-          updateData.fields.assignee = {
-            id: accountId,
-          };
-        }
-
-        if (priority) {
-          updateData.fields.priority = {
-            name: priority,
-          };
-        }
-
-        // Handle labels
-        if (setLabels) {
-          // Replace all labels
-          updateData.fields.labels = setLabels;
-        } else if (addLabels || removeLabels) {
-          // Modify existing labels
-          const currentLabels = currentIssue.fields.labels || [];
-          let newLabels = [...currentLabels];
-
-          if (addLabels) {
-            // Add only non-existing labels
-            addLabels.forEach((label) => {
-              if (!newLabels.includes(label)) {
-                newLabels.push(label);
-              }
-            });
-          }
-
-          if (removeLabels) {
-            // Remove specified labels
-            newLabels = newLabels.filter(
-              (label) => !removeLabels.includes(label),
-            );
-          }
-
-          updateData.fields.labels = newLabels;
-        }
-
-        // Handle components
-        if (setComponents) {
-          // Replace all components
-          updateData.fields.components = setComponents.map((name) => ({
-            name,
-          }));
-        } else if (addComponents || removeComponents) {
-          // Modify existing components
-          const currentComponents = (currentIssue.fields.components || []).map(
-            (c: any) => c.name,
-          );
-          let newComponents = [...currentComponents];
-
-          if (addComponents) {
-            // Add only non-existing components
-            addComponents.forEach((comp) => {
-              if (!newComponents.includes(comp)) {
-                newComponents.push(comp);
-              }
-            });
-          }
-
-          if (removeComponents) {
-            // Remove specified components
-            newComponents = newComponents.filter(
-              (comp) => !removeComponents.includes(comp),
-            );
-          }
-
-          updateData.fields.components = newComponents.map((name) => ({
-            name,
-          }));
-        }
-
-        // Update the issue
-        await this.client.updateIssue(issueKey, updateData);
-
-        // Handle status transition separately if provided
-        if (status) {
-          await this.transitionIssue({
-            issueKey,
-            transitionName: status,
-          });
-        }
-
-        successes.push(issueKey);
-      } catch (error: any) {
-        const errorMessage = error.message || "Unknown error";
-        failures.push({ issueKey, error: errorMessage });
-      }
-    }
-
-    return {
-      message: `Updated ${successes.length} of ${issueKeys.length} issues successfully`,
-      successes,
-      failures,
-    };
-  }
-
-  /**
-   * Add a watcher to an issue
-   * @param args Watcher parameters
-   * @returns Success message
-   */
-  async addWatcher(args: AddWatcherArgs): Promise<{ message: string }> {
-    try {
-      const { issueKey, username } = args;
-
-      // Get the account ID for the username
-      const accountId = await this.getUserAccountId({ email: username });
-
-      await this.client.addWatcher(issueKey, accountId);
-      return { message: `Added ${username} as a watcher to ${issueKey}` };
-    } catch (error: any) {
-      if (error.statusCode === 401) {
-        throw new Error("Authentication failed. Check your Jira credentials.");
-      }
-      if (error.statusCode === 404) {
-        throw new Error(`Issue ${args.issueKey} not found`);
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * Create a link between two issues
-   * @param args Link parameters
-   * @returns Success message
-   */
-  async createIssueLink(
-    args: CreateIssueLinkArgs,
-  ): Promise<{ message: string }> {
-    try {
-      const { inwardIssueKey, outwardIssueKey, linkType, comment } = args;
-
-      // Get link type information
-      const linkTypes = await this.listLinkTypes();
-      const matchedLinkType = linkTypes.find(
-        (type) => type.name.toLowerCase() === linkType.toLowerCase(),
-      );
-
-      if (!matchedLinkType) {
-        throw new Error(
-          `Link type "${linkType}" not found. Available types: ${linkTypes.map((t) => t.name).join(", ")}`,
-        );
-      }
-
-      const linkData: any = {
-        type: {
-          name: matchedLinkType.name,
-        },
-        inwardIssue: {
-          key: inwardIssueKey,
-        },
-        outwardIssue: {
-          key: outwardIssueKey,
-        },
-      };
-
-      if (comment) {
-        linkData.comment = {
-          body: convertToADF(comment),
-        };
-      }
-
-      await this.client.issueLink(linkData);
-      return {
-        message: `Created ${matchedLinkType.name} link between ${outwardIssueKey} (${matchedLinkType.outward}) and ${inwardIssueKey} (${matchedLinkType.inward})`,
-      };
-    } catch (error: any) {
-      if (error.statusCode === 401) {
-        throw new Error("Authentication failed. Check your Jira credentials.");
-      }
-      if (error.statusCode === 404) {
-        throw new Error("One or both of the specified issues were not found");
-      }
-      if (error.statusCode === 400) {
-        throw new Error(`Invalid link data: ${error.message}`);
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * Delete an issue
-   * @param args Delete parameters
-   * @returns Success message
-   */
-  async deleteIssue(args: DeleteIssueArgs): Promise<{ message: string }> {
-    try {
-      const { issueKey } = args;
-      await this.client.deleteIssue(issueKey);
-      return { message: `Issue ${issueKey} deleted successfully` };
-    } catch (error: any) {
-      if (error.statusCode === 401) {
-        throw new Error("Authentication failed. Check your Jira credentials.");
-      }
-      if (error.statusCode === 404) {
-        throw new Error(`Issue ${args.issueKey} not found`);
-      }
       if (error.statusCode === 403) {
-        throw new Error("You do not have permission to delete this issue");
+        throw new Error("Permission denied. Check your Jira permissions.");
       }
-      throw error;
+      throw new Error(`Failed to update issue: ${error.message}`);
     }
   }
 
-  /**
-   * Delete multiple issues
-   * @param args Bulk delete parameters
-   * @returns Success message
-   */
-  async bulkDeleteIssues(
-    args: BulkDeleteIssuesArgs,
-  ): Promise<{ message: string; failures: string[] }> {
-    const { issueKeys } = args;
-    const failures: string[] = [];
-
-    for (const issueKey of issueKeys) {
-      try {
-        await this.client.deleteIssue(issueKey);
-      } catch (error) {
-        failures.push(issueKey);
-      }
-    }
-
-    return {
-      message: `Deleted ${issueKeys.length - failures.length} of ${issueKeys.length} issues`,
-      failures,
-    };
-  }
-
-  /**
-   * Get possible transitions for an issue
-   * @param args Issue key
-   * @returns List of possible transitions
-   */
-  async getTransitions(args: GetTransitionsArgs): Promise<any[]> {
+  async getUsers(args: GetUsersArgs): Promise<JiraUser[]> {
     try {
-      const { issueKey } = args;
-      const response = await this.client.listTransitions(issueKey);
-      return response.transitions || [];
-    } catch (error: any) {
-      if (error.statusCode === 401) {
-        throw new Error("Authentication failed. Check your Jira credentials.");
-      }
-      if (error.statusCode === 404) {
-        throw new Error(`Issue ${args.issueKey} not found`);
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * Transition an issue to a new status
-   * @param args Transition parameters
-   * @returns Success message
-   */
-  async transitionIssue(
-    args: TransitionIssueArgs,
-  ): Promise<{ message: string }> {
-    try {
-      const { issueKey, transitionId, transitionName, comment, fields } = args;
-
-      let transitionIdToUse = transitionId;
-
-      // If transition name is provided but no ID, look up the ID
-      if (!transitionId && transitionName) {
-        const transitions = await this.getTransitions({ issueKey });
-        const matchedTransition = transitions.find(
-          (t: any) => t.name.toLowerCase() === transitionName.toLowerCase(),
-        );
-
-        if (!matchedTransition) {
-          throw new Error(
-            `Transition "${transitionName}" not found. Available transitions: ${transitions.map((t: any) => t.name).join(", ")}`,
-          );
-        }
-
-        transitionIdToUse = matchedTransition.id;
-      }
-
-      if (!transitionIdToUse) {
-        throw new Error(
-          "Either transitionId or transitionName must be provided",
-        );
-      }
-
-      const transitionData: any = {
-        transition: {
-          id: transitionIdToUse,
-        },
-      };
-
-      if (comment) {
-        transitionData.update = {
-          comment: [
-            {
-              add: {
-                body: convertToADF(comment),
-              },
-            },
-          ],
-        };
-      }
-
-      if (fields) {
-        transitionData.fields = fields;
-      }
-
-      await this.client.transitionIssue(issueKey, transitionData);
-      return { message: `Issue ${issueKey} transitioned successfully` };
-    } catch (error: any) {
-      if (error.statusCode === 401) {
-        throw new Error("Authentication failed. Check your Jira credentials.");
-      }
-      if (error.statusCode === 404) {
-        throw new Error(`Issue ${args.issueKey} not found`);
-      }
-      if (error.statusCode === 400) {
-        throw new Error(`Invalid transition data: ${error.message}`);
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * Add a comment to an issue
-   * @param args Comment parameters
-   * @returns The created comment
-   */
-  async addComment(args: AddCommentArgs): Promise<any> {
-    try {
-      const { issueKey, body, visibility } = args;
-
-      const commentData: any = {
-        body: convertToADF(body),
-      };
-
-      if (visibility) {
-        commentData.visibility = visibility;
-      }
-
-      const response = await this.client.addComment(issueKey, commentData);
-      return response;
-    } catch (error: any) {
-      if (error.statusCode === 401) {
-        throw new Error("Authentication failed. Check your Jira credentials.");
-      }
-      if (error.statusCode === 404) {
-        throw new Error(`Issue ${args.issueKey} not found`);
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * Search for issues across all projects using JQL
-   * @param args Search parameters
-   * @returns Array of issues
-   */
-  async searchIssues({
-    jql,
-    maxResults = 50,
-    fields,
-  }: SearchIssuesArgs): Promise<any[]> {
-    try {
-      const finalFields = fields || this.defaultFields;
-
-      const response = await this.client.searchJira(jql, {
-        maxResults,
-        fields: finalFields,
+      const { query, maxResults = 10 } = args;
+      
+      const users = await this.client.searchUsers({
+        query,
+        maxResults
       });
 
-      return response.issues || [];
+      return users.map((user: any) => ({
+        accountId: user.accountId,
+        displayName: user.displayName,
+        emailAddress: user.emailAddress,
+        active: user.active
+      }));
     } catch (error: any) {
-      if (error.statusCode === 400) {
-        throw new Error(`Invalid JQL query: ${error.message}`);
-      }
       if (error.statusCode === 401) {
         throw new Error("Authentication failed. Check your Jira credentials.");
       }
-      throw error;
+      if (error.statusCode === 403) {
+        throw new Error("Permission denied. Check your Jira permissions.");
+      }
+      throw new Error(`Failed to search users: ${error.message}`);
     }
+  }
+
+  async getCustomFields(): Promise<CustomField[]> {
+    try {
+      const fields = await this.client.listFields();
+      
+      return fields
+        .filter((field: any) => field.custom === true)
+        .map((field: any) => ({
+          id: field.id,
+          name: field.name,
+          custom: field.custom,
+          schema: field.schema
+        }));
+    } catch (error: any) {
+      if (error.statusCode === 401) {
+        throw new Error("Authentication failed. Check your Jira credentials.");
+      }
+      if (error.statusCode === 403) {
+        throw new Error("Permission denied. Check your Jira permissions.");
+      }
+      throw new Error(`Failed to get custom fields: ${error.message}`);
+    }
+  }
+
+  private async findUserByEmail(email: string): Promise<JiraUser> {
+    const users = await this.getUsers({ query: email, maxResults: 1 });
+    const user = users.find(u => u.emailAddress.toLowerCase() === email.toLowerCase());
+    
+    if (!user) {
+      throw new Error(`User with email "${email}" not found`);
+    }
+    
+    return user;
+  }
+
+  private async transitionIssue(issueKey: string, statusName: string): Promise<void> {
+    try {
+      const transitions = await this.client.listTransitions(issueKey);
+      const transition = transitions.transitions.find(
+        (t: any) => t.name.toLowerCase() === statusName.toLowerCase()
+      );
+
+      if (!transition) {
+        const availableTransitions = transitions.transitions.map((t: any) => t.name).join(", ");
+        throw new Error(
+          `Status "${statusName}" not available. Available transitions: ${availableTransitions}`
+        );
+      }
+
+      await this.client.transitionIssue(issueKey, {
+        transition: { id: transition.id }
+      });
+    } catch (error: any) {
+      throw new Error(`Failed to transition issue: ${error.message}`);
+    }
+  }
+
+  private convertToADF(text: string): any {
+    if (!text || !text.trim()) {
+      return {
+        version: 1,
+        type: "doc",
+        content: []
+      };
+    }
+
+    const paragraphs = text.split('\n\n').filter(p => p.trim());
+    const content = paragraphs.map(paragraph => ({
+      type: "paragraph",
+      content: [
+        {
+          type: "text",
+          text: paragraph.trim()
+        }
+      ]
+    }));
+
+    return {
+      version: 1,
+      type: "doc",
+      content
+    };
   }
 }
