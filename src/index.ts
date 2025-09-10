@@ -75,6 +75,15 @@ const GetUsersSchema = z.object({
   maxResults: z.number().min(1).max(50).default(10),
 });
 
+const LogTimeSchema = z.object({
+  issueKey: z.string().min(1),
+  timeSpentSeconds: z.number().min(1),
+  description: z.string().optional(),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format").optional(),
+  startTime: z.string().regex(/^\d{2}:\d{2}$/, "Time must be in HH:MM format").optional(),
+  authorAccountId: z.string().optional(),
+});
+
 // Define tools
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
@@ -241,6 +250,44 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {},
           additionalProperties: false
         }
+      },
+      {
+        name: "log_time",
+        description: "Log time spent on a Jira issue using Tempo. Requires TEMPO_API_TOKEN to be configured.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            issueKey: {
+              type: "string",
+              description: "Key of the issue to log time against (e.g., 'PROJECT-123')"
+            },
+            timeSpentSeconds: {
+              type: "number",
+              description: "Time spent in seconds (e.g., 3600 for 1 hour, 1800 for 30 minutes)",
+              minimum: 1
+            },
+            description: {
+              type: "string",
+              description: "Description of the work performed (optional)"
+            },
+            startDate: {
+              type: "string",
+              description: "Date when the work was performed in YYYY-MM-DD format (optional, defaults to today)",
+              pattern: "^\\d{4}-\\d{2}-\\d{2}$"
+            },
+            startTime: {
+              type: "string",
+              description: "Time when the work started in HH:MM format (optional, defaults to 09:00)",
+              pattern: "^\\d{2}:\\d{2}$"
+            },
+            authorAccountId: {
+              type: "string",
+              description: "Account ID of the person who performed the work (optional, defaults to authenticated user)"
+            }
+          },
+          required: ["issueKey", "timeSpentSeconds"],
+          additionalProperties: false
+        }
       }
     ]
   };
@@ -306,6 +353,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       
       case "get_custom_fields": {
         const result = await jiraService.getCustomFields();
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(result, null, 2)
+            }
+          ]
+        };
+      }
+      
+      case "log_time": {
+        const validArgs = LogTimeSchema.parse(args);
+        const result = await jiraService.logTime(validArgs);
         return {
           content: [
             {

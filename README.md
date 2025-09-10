@@ -9,6 +9,7 @@ A perfect Model Context Protocol (MCP) server for interacting with Jira. This se
 - ✅ **Update Issues**: Update existing issues including status transitions
 - ✅ **Get Users**: Search for users by name or email
 - ✅ **Custom Fields**: Full support for retrieving and setting custom fields
+- ✅ **Time Logging**: Log time spent on issues using Tempo API integration
 - ✅ **Error Handling**: Comprehensive error handling with helpful messages
 - ✅ **Type Safety**: Full TypeScript support with proper typing
 
@@ -29,6 +30,10 @@ A perfect Model Context Protocol (MCP) server for interacting with Jira. This se
    JIRA_EMAIL=your-email@example.com
    JIRA_API_TOKEN=your-api-token-here
    JIRA_API_VERSION=3
+   
+   # Optional: For time logging with Tempo
+   TEMPO_API_TOKEN=your-tempo-api-token-here
+   TEMPO_BASE_URL=https://api.tempo.io/core/3
    ```
 
 ## Getting Your Jira API Token
@@ -172,6 +177,35 @@ Get all custom fields available in the Jira instance.
 ```json
 {}
 ```
+
+### \`log_time\`
+Log time spent on a Jira issue using Tempo. Requires TEMPO_API_TOKEN to be configured.
+
+**Parameters:**
+- \`issueKey\` (string, required): Key of the issue to log time against (e.g., 'PROJECT-123')
+- \`timeSpentSeconds\` (number, required): Time spent in seconds (e.g., 3600 for 1 hour, 1800 for 30 minutes)
+- \`description\` (string, optional): Description of the work performed
+- \`startDate\` (string, optional): Date when the work was performed in YYYY-MM-DD format (defaults to today)
+- \`startTime\` (string, optional): Time when the work started in HH:MM format (defaults to 09:00)
+- \`authorAccountId\` (string, optional): Account ID of the person who performed the work (defaults to authenticated user)
+
+**Example:**
+```json
+{
+  "issueKey": "PROJ-123",
+  "timeSpentSeconds": 7200,
+  "description": "Implemented new feature and wrote tests",
+  "startDate": "2024-01-15",
+  "startTime": "10:30"
+}
+```
+
+## Getting Your Tempo API Token
+
+1. Log into your Tempo account
+2. Go to **Settings** → **API Integration**
+3. Click **Create Token**
+4. Copy the generated token to your `.env` file as `TEMPO_API_TOKEN`
 
 ## Error Handling
 

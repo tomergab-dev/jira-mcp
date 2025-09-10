@@ -92,8 +92,39 @@ export interface GetUsersArgs {
   maxResults?: number;
 }
 
+export interface LogTimeArgs {
+  issueKey: string;
+  timeSpentSeconds: number;
+  description?: string;
+  startDate?: string; // YYYY-MM-DD format
+  startTime?: string; // HH:MM format
+  authorAccountId?: string;
+}
+
+export interface WorkLog {
+  tempoWorklogId: number;
+  jiraWorklogId: number;
+  issue: {
+    key: string;
+    id: number;
+  };
+  timeSpentSeconds: number;
+  billableSeconds?: number;
+  startDate: string;
+  startTime: string;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+  author: {
+    accountId: string;
+    displayName: string;
+  };
+}
+
 export class JiraService {
   private client: JiraClient;
+  private tempoApiToken?: string;
+  private tempoBaseUrl?: string;
   private readonly defaultFields = [
     "summary",
     "description", 
@@ -129,6 +160,10 @@ export class JiraService {
       apiVersion,
       strictSSL: true,
     });
+
+    // Tempo API configuration (optional)
+    this.tempoApiToken = process.env.TEMPO_API_TOKEN;
+    this.tempoBaseUrl = process.env.TEMPO_BASE_URL || `https://api.tempo.io/core/3`;
   }
 
   async getIssues(args: GetIssuesArgs): Promise<JiraIssue[]> {
@@ -352,6 +387,61 @@ export class JiraService {
         throw new Error("Permission denied. Check your Jira permissions.");
       }
       throw new Error(`Failed to get custom fields: ${error.message}`);
+    }
+  }
+
+  async logTime(args: LogTimeArgs): Promise<WorkLog> {
+    try {
+      if (!this.tempoApiToken) {
+        throw new Error(
+          "Tempo API token not configured. Set TEMPO_API_TOKEN environment variable."
+        );
+      }
+
+      const {
+        issueKey,
+        timeSpentSeconds,
+        description = "",
+        startDate,
+        startTime = "09:00",
+        authorAccountId
+      } = args;
+
+      // Use current date if not provided
+      const logDate = startDate || new Date().toISOString().split('T')[0];
+
+      const worklogData = {
+        issueKey,
+        timeSpentSeconds,
+        description,
+        startDate: logDate,
+        startTime,
+        ...(authorAccountId && { authorAccountId })
+      };
+
+      const response = await fetch(`${this.tempoBaseUrl}/worklogs`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.tempoApiToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(worklogData)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          `Tempo API error (${response.status}): ${errorData.message || response.statusText}`
+        );
+      }
+
+      const worklog = await response.json();
+      return worklog as WorkLog;
+    } catch (error: any) {
+      if (error.message.includes('fetch')) {
+        throw new Error("Failed to connect to Tempo API. Check your network connection and Tempo configuration.");
+      }
+      throw new Error(`Failed to log time: ${error.message}`);
     }
   }
 
