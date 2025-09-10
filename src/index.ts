@@ -477,12 +477,17 @@ class JiraServer {
    * Create a new JiraServer instance
    */
   constructor() {
-    this.server = new Server({
-      title: "Jira Server",
-      description: "MCP server for interacting with Jira",
-      version: "1.0.0",
-      transport: new StdioServerTransport(),
-    });
+    this.server = new Server(
+      {
+        name: "jira-server",
+        version: "1.0.0",
+      },
+      {
+        capabilities: {
+          tools: {},
+        },
+      }
+    );
 
     try {
       this.jiraService = new JiraService();
@@ -499,19 +504,19 @@ class JiraServer {
    */
   private setupToolHandlers(): void {
     // Set up message handlers for list_tools and call_tool requests
-    this.server.onListTools((request: ListToolsRequestSchema) => {
+    this.server.setRequestHandler(ListToolsRequestSchema, async (request) => {
       log("Handling list_tools request", "debug");
       return {
         tools: Object.entries(this.toolDefinitions).map(([name, definition]) => ({
           name,
           description: definition.description,
-          input_schema: definition.inputSchema,
+          inputSchema: definition.inputSchema,
         })),
       };
     });
 
-    this.server.onCallTool(async (request: CallToolRequestSchema) => {
-      const { tool, arguments: args } = request;
+    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+      const { name: tool, arguments: args } = request.params;
       log(`Handling call_tool request for tool: ${tool}`, "debug");
       
       if (isDebug) {
@@ -603,7 +608,7 @@ class JiraServer {
           default:
             log(`Tool not found: ${tool}`, "error");
             throw new McpError(
-              ErrorCode.TOOL_NOT_FOUND,
+              "TOOL_NOT_FOUND" as any,
               `Tool "${tool}" not found. Available tools: ${Object.keys(
                 this.toolDefinitions
               ).join(", ")}`
@@ -614,7 +619,7 @@ class JiraServer {
         if (error.name === 'ZodError') {
           log(`Invalid arguments for tool ${tool}: ${error.message}`, "error");
           throw new McpError(
-            ErrorCode.INVALID_ARGUMENTS,
+            "INVALID_PARAMS" as any,
             `Invalid arguments for tool "${tool}": ${error.message}`
           );
         }
@@ -626,7 +631,7 @@ class JiraServer {
         
         log(`Error in tool "${tool}": ${error.message}`, "error");
         throw new McpError(
-          ErrorCode.TOOL_EXECUTION_ERROR,
+          "INTERNAL_ERROR" as any,
           `Error executing tool "${tool}": ${error.message}`
         );
       }
@@ -638,7 +643,8 @@ class JiraServer {
    */
   public async run(): Promise<void> {
     log("Starting JiraServer...", "info");
-    await this.server.listen();
+    const transport = new StdioServerTransport();
+    await this.server.connect(transport);
   }
 }
 

@@ -121,7 +121,16 @@ export class JiraService {
   async listFields(): Promise<JiraField[]> {
     try {
       const fields = await this.client.listFields();
-      return fields;
+      return fields.map((field: any) => ({
+        id: field.id,
+        name: field.name,
+        custom: field.custom,
+        orderable: field.orderable,
+        navigable: field.navigable,
+        searchable: field.searchable,
+        clauseNames: field.clauseNames || [],
+        schema: field.schema,
+      }));
     } catch (error: any) {
       if (error.statusCode === 401) {
         throw new Error('Authentication failed. Check your Jira credentials.');
@@ -164,7 +173,7 @@ export class JiraService {
         options.expand = expand.join(',');
       }
       
-      const project = await this.client.getProject(projectKey, options);
+      const project = await this.client.getProject(projectKey);
       return project;
     } catch (error: any) {
       if (error.statusCode === 401) {
@@ -370,9 +379,7 @@ export class JiraService {
       await this.client.updateIssue(issueKey, updateData);
 
       // Get the updated issue and return it
-      return await this.client.findIssue(issueKey, {
-        fields: this.defaultFields,
-      });
+      return await this.client.findIssue(issueKey, this.defaultFields.join(','));
     } catch (error: any) {
       if (error.statusCode === 401) {
         throw new Error('Authentication failed. Check your Jira credentials.');
@@ -426,9 +433,7 @@ export class JiraService {
     for (const issueKey of issueKeys) {
       try {
         // Get current issue data for fields that need merging (labels, components)
-        const currentIssue = await this.client.findIssue(issueKey, {
-          fields: ['labels', 'components'],
-        });
+        const currentIssue = await this.client.findIssue(issueKey, 'labels,components');
 
         const updateData: any = {
           fields: {
@@ -622,7 +627,7 @@ export class JiraService {
   async deleteIssue(args: DeleteIssueArgs): Promise<{ message: string }> {
     try {
       const { issueKey, deleteSubtasks = false } = args;
-      await this.client.deleteIssue(issueKey, deleteSubtasks);
+      await this.client.deleteIssue(issueKey);
       return { message: `Issue ${issueKey} deleted successfully` };
     } catch (error: any) {
       if (error.statusCode === 401) {
