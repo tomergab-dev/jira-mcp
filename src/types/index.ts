@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from "zod";
 
 /**
  * Schema for creating a Jira issue
@@ -21,12 +21,16 @@ export type CreateIssueArgs = z.infer<typeof CreateIssueSchema>;
 /**
  * Schema for retrieving issues
  */
-export const GetIssuesSchema = z.object({
-  projectKey: z.string().min(1),
-  jql: z.string().optional(),
-  maxResults: z.number().min(1).max(100).optional().default(50),
-  fields: z.array(z.string()).optional(),
-});
+export const GetIssuesSchema = z
+  .object({
+    projectKey: z.string().min(1).optional(),
+    jql: z.string().optional(),
+    maxResults: z.number().min(1).max(100).optional().default(50),
+    fields: z.array(z.string()).optional(),
+  })
+  .refine((data) => data.projectKey !== undefined || data.jql !== undefined, {
+    message: "Either projectKey or jql must be provided",
+  });
 
 export type GetIssuesArgs = z.infer<typeof GetIssuesSchema>;
 
@@ -50,37 +54,45 @@ export type UpdateIssueArgs = z.infer<typeof UpdateIssueSchema>;
 /**
  * Schema for bulk updating multiple issues
  */
-export const BulkUpdateIssuesSchema = z.object({
-  issueKeys: z.array(z.string().min(1)),
-  summary: z.string().optional(),
-  description: z.string().optional(),
-  assignee: z.string().email().optional(),
-  status: z.string().optional(),
-  priority: z.string().optional(),
-  addLabels: z.array(z.string()).optional(),
-  removeLabels: z.array(z.string()).optional(),
-  setLabels: z.array(z.string()).optional(),
-  addComponents: z.array(z.string()).optional(),
-  removeComponents: z.array(z.string()).optional(),
-  setComponents: z.array(z.string()).optional(),
-  customFields: z.record(z.any()).optional(),
-}).refine(data => {
-  // Ensure at least one update field is provided
-  return data.summary !== undefined || 
-         data.description !== undefined || 
-         data.assignee !== undefined || 
-         data.status !== undefined ||
-         data.priority !== undefined ||
-         data.addLabels !== undefined ||
-         data.removeLabels !== undefined ||
-         data.setLabels !== undefined ||
-         data.addComponents !== undefined ||
-         data.removeComponents !== undefined ||
-         data.setComponents !== undefined ||
-         (data.customFields !== undefined && Object.keys(data.customFields).length > 0);
-}, {
-  message: "At least one field to update must be provided",
-});
+export const BulkUpdateIssuesSchema = z
+  .object({
+    issueKeys: z.array(z.string().min(1)),
+    summary: z.string().optional(),
+    description: z.string().optional(),
+    assignee: z.string().email().optional(),
+    status: z.string().optional(),
+    priority: z.string().optional(),
+    addLabels: z.array(z.string()).optional(),
+    removeLabels: z.array(z.string()).optional(),
+    setLabels: z.array(z.string()).optional(),
+    addComponents: z.array(z.string()).optional(),
+    removeComponents: z.array(z.string()).optional(),
+    setComponents: z.array(z.string()).optional(),
+    customFields: z.record(z.any()).optional(),
+  })
+  .refine(
+    (data) => {
+      // Ensure at least one update field is provided
+      return (
+        data.summary !== undefined ||
+        data.description !== undefined ||
+        data.assignee !== undefined ||
+        data.status !== undefined ||
+        data.priority !== undefined ||
+        data.addLabels !== undefined ||
+        data.removeLabels !== undefined ||
+        data.setLabels !== undefined ||
+        data.addComponents !== undefined ||
+        data.removeComponents !== undefined ||
+        data.setComponents !== undefined ||
+        (data.customFields !== undefined &&
+          Object.keys(data.customFields).length > 0)
+      );
+    },
+    {
+      message: "At least one field to update must be provided",
+    },
+  );
 
 export type BulkUpdateIssuesArgs = z.infer<typeof BulkUpdateIssuesSchema>;
 
@@ -127,16 +139,22 @@ export type BulkDeleteIssuesArgs = z.infer<typeof BulkDeleteIssuesSchema>;
 /**
  * Schema for transitioning an issue
  */
-export const TransitionIssueSchema = z.object({
-  issueKey: z.string().min(1),
-  transitionId: z.string().optional(),
-  transitionName: z.string().optional(),
-  comment: z.string().optional(),
-  resolution: z.string().optional(),
-  fields: z.record(z.any()).optional(),
-}).refine(data => data.transitionId !== undefined || data.transitionName !== undefined, {
-  message: "Either transitionId or transitionName must be provided",
-});
+export const TransitionIssueSchema = z
+  .object({
+    issueKey: z.string().min(1),
+    transitionId: z.string().optional(),
+    transitionName: z.string().optional(),
+    comment: z.string().optional(),
+    resolution: z.string().optional(),
+    fields: z.record(z.any()).optional(),
+  })
+  .refine(
+    (data) =>
+      data.transitionId !== undefined || data.transitionName !== undefined,
+    {
+      message: "Either transitionId or transitionName must be provided",
+    },
+  );
 
 export type TransitionIssueArgs = z.infer<typeof TransitionIssueSchema>;
 
@@ -146,10 +164,12 @@ export type TransitionIssueArgs = z.infer<typeof TransitionIssueSchema>;
 export const AddCommentSchema = z.object({
   issueKey: z.string().min(1),
   body: z.string().min(1),
-  visibility: z.object({
-    type: z.enum(['group', 'role']),
-    value: z.string(),
-  }).optional(),
+  visibility: z
+    .object({
+      type: z.enum(["group", "role"]),
+      value: z.string(),
+    })
+    .optional(),
 });
 
 export type AddCommentArgs = z.infer<typeof AddCommentSchema>;
@@ -182,6 +202,17 @@ export const GetProjectSchema = z.object({
 });
 
 export type GetProjectArgs = z.infer<typeof GetProjectSchema>;
+
+/**
+ * Schema for searching issues across all projects
+ */
+export const SearchIssuesSchema = z.object({
+  jql: z.string().min(1),
+  maxResults: z.number().min(1).max(100).optional().default(50),
+  fields: z.array(z.string()).optional(),
+});
+
+export type SearchIssuesArgs = z.infer<typeof SearchIssuesSchema>;
 
 /**
  * Interface for Jira issue type
@@ -223,4 +254,4 @@ export interface IssueLinkType {
   inward: string;
   outward: string;
   self?: string;
-} 
+}

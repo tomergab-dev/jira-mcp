@@ -1,39 +1,38 @@
 #!/usr/bin/env node
 
-import * as dotenv from 'dotenv';
+import * as dotenv from "dotenv";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
-  ErrorCode,
   ListToolsRequestSchema,
   McpError,
 } from "@modelcontextprotocol/sdk/types.js";
 
-import { JiraService } from './services/JiraService.js';
-import * as schemas from './types/index.js';
+import { JiraService } from "./services/JiraService.js";
+import * as schemas from "./types/index.js";
 
 // Load environment variables
 dotenv.config();
 
 // Initialize logging level
-const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
-const isDebug = LOG_LEVEL === 'debug';
+const LOG_LEVEL = process.env.LOG_LEVEL || "info";
+const isDebug = LOG_LEVEL === "debug";
 
 /**
  * Custom logging function that respects log level
  */
-function log(message: string, level = 'info'): void {
+function log(message: string, level = "info"): void {
   const levels = {
     debug: 0,
     info: 1,
     warn: 2,
-    error: 3
+    error: 3,
   };
-  
+
   const configuredLevel = levels[LOG_LEVEL as keyof typeof levels] || 1;
   const messageLevel = levels[level as keyof typeof levels] || 1;
-  
+
   if (messageLevel >= configuredLevel) {
     const prefix = `[${level.toUpperCase()}]`;
     console.log(`${prefix} ${message}`);
@@ -74,7 +73,8 @@ class JiraServer {
             items: {
               type: "string",
             },
-            description: "Optional list of properties to expand (e.g., 'lead', 'description', 'url', etc.)",
+            description:
+              "Optional list of properties to expand (e.g., 'lead', 'description', 'url', etc.)",
           },
         },
         required: ["projectKey"],
@@ -102,21 +102,25 @@ class JiraServer {
       },
     },
     get_issues: {
-      description: "Get all issues and subtasks for a project, optionally filtered by JQL",
+      description:
+        "Get issues for a project or search across all projects with JQL",
       inputSchema: {
         type: "object",
         properties: {
           projectKey: {
             type: "string",
-            description: "Key of the project to get issues from",
+            description:
+              "Key of the project to get issues from (optional if jql is provided)",
           },
           jql: {
             type: "string",
-            description: "Optional JQL query to filter issues",
+            description:
+              "JQL query to filter issues (required if projectKey is not provided)",
           },
           maxResults: {
             type: "number",
-            description: "Maximum number of results to return (default: 50, max: 100)",
+            description:
+              "Maximum number of results to return (default: 50, max: 100)",
           },
           fields: {
             type: "array",
@@ -126,7 +130,32 @@ class JiraServer {
             description: "Optional list of fields to include in the response",
           },
         },
-        required: ["projectKey"],
+        required: [],
+      },
+    },
+    search_issues: {
+      description: "Search for issues across all projects using JQL",
+      inputSchema: {
+        type: "object",
+        properties: {
+          jql: {
+            type: "string",
+            description: "JQL query to search for issues across all projects",
+          },
+          maxResults: {
+            type: "number",
+            description:
+              "Maximum number of results to return (default: 50, max: 100)",
+          },
+          fields: {
+            type: "array",
+            items: {
+              type: "string",
+            },
+            description: "Optional list of fields to include in the response",
+          },
+        },
+        required: ["jql"],
       },
     },
     create_issue: {
@@ -144,7 +173,8 @@ class JiraServer {
           },
           issueType: {
             type: "string",
-            description: "Type of issue (e.g., 'Task', 'Story', 'Bug', 'Subtask')",
+            description:
+              "Type of issue (e.g., 'Task', 'Story', 'Bug', 'Subtask')",
           },
           description: {
             type: "string",
@@ -218,14 +248,16 @@ class JiraServer {
             items: {
               type: "string",
             },
-            description: "New labels to set for the issue (replaces existing labels)",
+            description:
+              "New labels to set for the issue (replaces existing labels)",
           },
           components: {
             type: "array",
             items: {
               type: "string",
             },
-            description: "New components to set for the issue (replaces existing components)",
+            description:
+              "New components to set for the issue (replaces existing components)",
           },
           customFields: {
             type: "object",
@@ -286,14 +318,16 @@ class JiraServer {
             items: {
               type: "string",
             },
-            description: "Labels to set for the issues (replaces existing labels)",
+            description:
+              "Labels to set for the issues (replaces existing labels)",
           },
           addComponents: {
             type: "array",
             items: {
               type: "string",
             },
-            description: "Components to add to the issues (keeps existing components)",
+            description:
+              "Components to add to the issues (keeps existing components)",
           },
           removeComponents: {
             type: "array",
@@ -307,7 +341,8 @@ class JiraServer {
             items: {
               type: "string",
             },
-            description: "Components to set for the issues (replaces existing components)",
+            description:
+              "Components to set for the issues (replaces existing components)",
           },
           customFields: {
             type: "object",
@@ -403,7 +438,8 @@ class JiraServer {
           },
           transitionName: {
             type: "string",
-            description: "Name of the transition to perform (alternative to transitionId)",
+            description:
+              "Name of the transition to perform (alternative to transitionId)",
           },
           comment: {
             type: "string",
@@ -486,7 +522,7 @@ class JiraServer {
         capabilities: {
           tools: {},
         },
-      }
+      },
     );
 
     try {
@@ -504,21 +540,23 @@ class JiraServer {
    */
   private setupToolHandlers(): void {
     // Set up message handlers for list_tools and call_tool requests
-    this.server.setRequestHandler(ListToolsRequestSchema, async (request) => {
+    this.server.setRequestHandler(ListToolsRequestSchema, async () => {
       log("Handling list_tools request", "debug");
       return {
-        tools: Object.entries(this.toolDefinitions).map(([name, definition]) => ({
-          name,
-          description: definition.description,
-          inputSchema: definition.inputSchema,
-        })),
+        tools: Object.entries(this.toolDefinitions).map(
+          ([name, definition]) => ({
+            name,
+            description: definition.description,
+            inputSchema: definition.inputSchema,
+          }),
+        ),
       };
     });
 
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name: tool, arguments: args } = request.params;
       log(`Handling call_tool request for tool: ${tool}`, "debug");
-      
+
       if (isDebug) {
         log(`Tool arguments: ${JSON.stringify(args, null, 2)}`, "debug");
       }
@@ -527,12 +565,16 @@ class JiraServer {
         switch (tool) {
           case "get_user":
             return {
-              output: await this.jiraService.getUserAccountId(schemas.GetUserSchema.parse(args)),
+              output: await this.jiraService.getUserAccountId(
+                schemas.GetUserSchema.parse(args),
+              ),
             };
 
           case "get_project":
             return {
-              output: await this.jiraService.getProject(schemas.GetProjectSchema.parse(args)),
+              output: await this.jiraService.getProject(
+                schemas.GetProjectSchema.parse(args),
+              ),
             };
 
           case "list_issue_types":
@@ -552,57 +594,86 @@ class JiraServer {
 
           case "get_issues":
             return {
-              output: await this.jiraService.getIssues(schemas.GetIssuesSchema.parse(args)),
+              output: await this.jiraService.getIssues(
+                schemas.GetIssuesSchema.parse(args),
+              ),
+            };
+
+          case "search_issues":
+            return {
+              output: await this.jiraService.searchIssues(
+                schemas.SearchIssuesSchema.parse(args),
+              ),
             };
 
           case "create_issue":
             return {
-              output: await this.jiraService.createIssue(schemas.CreateIssueSchema.parse(args)),
+              output: await this.jiraService.createIssue(
+                schemas.CreateIssueSchema.parse(args),
+              ),
             };
 
           case "update_issue":
             return {
-              output: await this.jiraService.updateIssue(schemas.UpdateIssueSchema.parse(args)),
+              output: await this.jiraService.updateIssue(
+                schemas.UpdateIssueSchema.parse(args),
+              ),
             };
 
           case "bulk_update_issues":
             return {
-              output: await this.jiraService.bulkUpdateIssues(schemas.BulkUpdateIssuesSchema.parse(args)),
+              output: await this.jiraService.bulkUpdateIssues(
+                schemas.BulkUpdateIssuesSchema.parse(args),
+              ),
             };
 
           case "create_issue_link":
             return {
-              output: await this.jiraService.createIssueLink(schemas.CreateIssueLinkSchema.parse(args)),
+              output: await this.jiraService.createIssueLink(
+                schemas.CreateIssueLinkSchema.parse(args),
+              ),
             };
 
           case "delete_issue":
             return {
-              output: await this.jiraService.deleteIssue(schemas.DeleteIssueSchema.parse(args)),
+              output: await this.jiraService.deleteIssue(
+                schemas.DeleteIssueSchema.parse(args),
+              ),
             };
 
           case "bulk_delete_issues":
             return {
-              output: await this.jiraService.bulkDeleteIssues(schemas.BulkDeleteIssuesSchema.parse(args)),
+              output: await this.jiraService.bulkDeleteIssues(
+                schemas.BulkDeleteIssuesSchema.parse(args),
+              ),
             };
 
           case "get_transitions":
             return {
-              output: await this.jiraService.getTransitions(schemas.GetTransitionsSchema.parse(args)),
+              output: await this.jiraService.getTransitions(
+                schemas.GetTransitionsSchema.parse(args),
+              ),
             };
 
           case "transition_issue":
             return {
-              output: await this.jiraService.transitionIssue(schemas.TransitionIssueSchema.parse(args)),
+              output: await this.jiraService.transitionIssue(
+                schemas.TransitionIssueSchema.parse(args),
+              ),
             };
 
           case "add_comment":
             return {
-              output: await this.jiraService.addComment(schemas.AddCommentSchema.parse(args)),
+              output: await this.jiraService.addComment(
+                schemas.AddCommentSchema.parse(args),
+              ),
             };
 
           case "add_watcher":
             return {
-              output: await this.jiraService.addWatcher(schemas.AddWatcherSchema.parse(args)),
+              output: await this.jiraService.addWatcher(
+                schemas.AddWatcherSchema.parse(args),
+              ),
             };
 
           default:
@@ -610,29 +681,29 @@ class JiraServer {
             throw new McpError(
               "TOOL_NOT_FOUND" as any,
               `Tool "${tool}" not found. Available tools: ${Object.keys(
-                this.toolDefinitions
-              ).join(", ")}`
+                this.toolDefinitions,
+              ).join(", ")}`,
             );
         }
       } catch (error: any) {
         // Special handling for Zod validation errors
-        if (error.name === 'ZodError') {
+        if (error.name === "ZodError") {
           log(`Invalid arguments for tool ${tool}: ${error.message}`, "error");
           throw new McpError(
             "INVALID_PARAMS" as any,
-            `Invalid arguments for tool "${tool}": ${error.message}`
+            `Invalid arguments for tool "${tool}": ${error.message}`,
           );
         }
-        
+
         // Handle various error types
         if (error instanceof McpError) {
           throw error;
         }
-        
+
         log(`Error in tool "${tool}": ${error.message}`, "error");
         throw new McpError(
           "INTERNAL_ERROR" as any,
-          `Error executing tool "${tool}": ${error.message}`
+          `Error executing tool "${tool}": ${error.message}`,
         );
       }
     });
@@ -653,4 +724,4 @@ const server = new JiraServer();
 server.run().catch((error) => {
   log(`Server error: ${error.message}`, "error");
   process.exit(1);
-}); 
+});

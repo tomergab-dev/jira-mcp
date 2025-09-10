@@ -125,6 +125,10 @@ To use this MCP server with Claude Desktop:
 
 ## Available Tools
 
+**NEW: Cross-Project Search Capability**
+
+The server now supports searching for issues across all projects without requiring a specific project filter. This enables powerful cross-project queries and analytics.
+
 ### Project Information
 
 ```typescript
@@ -142,6 +146,13 @@ To use this MCP server with Claude Desktop:
 
 // List all available issue link types
 // No parameters required
+
+// Search issues across all projects (NEW)
+{
+  jql: "assignee = currentUser() AND status != 'Done'",
+  maxResults: 100, // Optional
+  fields: ["summary", "project", "status", "assignee"] // Optional
+}
 ```
 
 ### User Management
@@ -167,10 +178,25 @@ To use this MCP server with Claude Desktop:
   projectKey: "PROJECT"
 }
 
-// Get issues with JQL filtering
+// Get issues with JQL filtering within a project
 {
   projectKey: "PROJECT",
   jql: "status = 'In Progress' AND assignee = currentUser()"
+}
+
+// Search issues across ALL projects using JQL (NEW)
+{
+  jql: "status = 'In Progress' AND assignee = currentUser()"
+}
+
+// Search for issues assigned to a specific user across all projects (NEW)
+{
+  jql: "assignee = 'user@example.com'"
+}
+
+// Search for issues with specific labels across all projects (NEW)
+{
+  jql: "labels = 'urgent' OR labels = 'bug'"
 }
 
 // Get more issues at once (default: 50)
@@ -183,6 +209,32 @@ To use this MCP server with Claude Desktop:
 {
   projectKey: "PROJECT",
   fields: ["summary", "status", "assignee", "labels"]
+}
+```
+
+### Cross-Project Issue Search
+
+```typescript
+// Use the dedicated search_issues tool for cross-project searches
+{
+  jql: "project IN ('PROJ1', 'PROJ2') AND status = 'Open'"
+}
+
+// Search by issue type across all projects
+{
+  jql: "issuetype = 'Bug' AND status != 'Done'"
+}
+
+// Search by reporter across all projects
+{
+  jql: "reporter = 'manager@example.com' AND created >= -7d"
+}
+
+// Complex cross-project search
+{
+  jql: "(priority = 'High' OR priority = 'Critical') AND assignee = currentUser() AND status IN ('To Do', 'In Progress')",
+  maxResults: 25,
+  fields: ["summary", "project", "status", "priority"]
 }
 ```
 

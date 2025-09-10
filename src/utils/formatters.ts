@@ -19,7 +19,7 @@ export function convertToADF(text: string) {
 
   const lines = text.split("\n");
   const content: any[] = [];
-  
+
   let currentList: any = null;
   let currentListType: "bullet" | "ordered" | null = null;
   let codeBlockContent: string[] = [];
@@ -41,12 +41,16 @@ export function convertToADF(text: string) {
         content.push({
           type: "codeBlock",
           attrs: {
-            language: trimmedLine.startsWith("``` ") ? trimmedLine.substring(4) : "plain",
+            language: trimmedLine.startsWith("``` ")
+              ? trimmedLine.substring(4)
+              : "plain",
           },
-          content: [{
-            type: "text",
-            text: codeBlockContent.join("\n"),
-          }],
+          content: [
+            {
+              type: "text",
+              text: codeBlockContent.join("\n"),
+            },
+          ],
         });
         continue;
       }
@@ -121,10 +125,13 @@ export function convertToADF(text: string) {
     }
 
     // Handle headings (lines ending with ":" or starting with # markers)
-    if ((trimmedLine.endsWith(":") && nextLine.trim() === "") || trimmedLine.startsWith("#")) {
+    if (
+      (trimmedLine.endsWith(":") && nextLine.trim() === "") ||
+      trimmedLine.startsWith("#")
+    ) {
       let level = 3; // Default heading level
       let text = trimmedLine;
-      
+
       // Handle markdown style headings
       if (trimmedLine.startsWith("#")) {
         const match = trimmedLine.match(/^(#+)\s+(.*)/);
@@ -133,7 +140,7 @@ export function convertToADF(text: string) {
           text = match[2];
         }
       }
-      
+
       content.push({
         type: "heading",
         attrs: { level },
@@ -150,10 +157,10 @@ export function convertToADF(text: string) {
     // Regular paragraph
     currentList = null;
     currentListType = null;
-    
+
     // Check for bold/italic formatting
     const textContent = parseInlineFormatting(trimmedLine);
-    
+
     content.push({
       type: "paragraph",
       content: textContent,
@@ -175,87 +182,87 @@ export function convertToADF(text: string) {
 function parseInlineFormatting(text: string): any[] {
   let result: any[] = [];
   let currentText = "";
-  
+
   // Simple parsing for common markdown-style formatting
   // This is a basic implementation - real implementation would need more robust parsing
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
     const nextChar = text[i + 1] || "";
     const prevChar = text[i - 1] || "";
-    
+
     // Bold with **
     if (char === "*" && nextChar === "*" && (i === 0 || prevChar !== "\\")) {
       if (currentText) {
         result.push({ type: "text", text: currentText });
         currentText = "";
       }
-      
+
       // Find the closing **
       const start = i + 2;
       let end = text.indexOf("**", start);
       if (end === -1) end = text.length;
-      
-      result.push({ 
-        type: "text", 
+
+      result.push({
+        type: "text",
         text: text.substring(start, end),
-        marks: [{ type: "strong" }]
+        marks: [{ type: "strong" }],
       });
-      
+
       i = end + 1;
       continue;
     }
-    
+
     // Italic with *
     if (char === "*" && nextChar !== "*" && (i === 0 || prevChar !== "\\")) {
       if (currentText) {
         result.push({ type: "text", text: currentText });
         currentText = "";
       }
-      
+
       // Find the closing *
       const start = i + 1;
       let end = text.indexOf("*", start);
       if (end === -1) end = text.length;
-      
-      result.push({ 
-        type: "text", 
+
+      result.push({
+        type: "text",
         text: text.substring(start, end),
-        marks: [{ type: "em" }]
+        marks: [{ type: "em" }],
       });
-      
+
       i = end;
       continue;
     }
-    
+
     // Inline code with `
     if (char === "`" && (i === 0 || prevChar !== "\\")) {
       if (currentText) {
         result.push({ type: "text", text: currentText });
         currentText = "";
       }
-      
+
       // Find the closing `
       const start = i + 1;
       let end = text.indexOf("`", start);
       if (end === -1) end = text.length;
-      
-      result.push({ 
-        type: "text", 
+
+      result.push({
+        type: "text",
         text: text.substring(start, end),
-        marks: [{ type: "code" }]
+        marks: [{ type: "code" }],
       });
-      
+
       i = end;
       continue;
     }
-    
+
     currentText += char;
   }
-  
+
   if (currentText) {
     result.push({ type: "text", text: currentText });
   }
-  
+
   return result.length ? result : [{ type: "text", text }];
 }
 
@@ -265,32 +272,39 @@ function parseInlineFormatting(text: string): any[] {
  * @param params Parameters to substitute into the query
  * @returns Formatted JQL query
  */
-export function formatJQL(query: string, params: Record<string, any> = {}): string {
+export function formatJQL(
+  query: string,
+  params: Record<string, any> = {},
+): string {
   let formattedQuery = query;
-  
+
   for (const [key, value] of Object.entries(params)) {
     const placeholder = `\${${key}}`;
-    
+
     if (formattedQuery.includes(placeholder)) {
       let formattedValue: string;
-      
-      if (typeof value === 'string') {
+
+      if (typeof value === "string") {
         // Quote strings that contain spaces or special characters
-        formattedValue = /[ "'\\]/.test(value) ? `"${value.replace(/"/g, '\\"')}"` : value;
+        formattedValue = /[ "'\\]/.test(value)
+          ? `"${value.replace(/"/g, '\\"')}"`
+          : value;
       } else if (Array.isArray(value)) {
         // Handle arrays by formatting as "value1", "value2"
-        formattedValue = value.map(v => 
-          typeof v === 'string' && /[ "'\\]/.test(v) 
-            ? `"${v.replace(/"/g, '\\"')}"` 
-            : String(v)
-        ).join(', ');
+        formattedValue = value
+          .map((v) =>
+            typeof v === "string" && /[ "'\\]/.test(v)
+              ? `"${v.replace(/"/g, '\\"')}"`
+              : String(v),
+          )
+          .join(", ");
       } else {
         formattedValue = String(value);
       }
-      
+
       formattedQuery = formattedQuery.replace(placeholder, formattedValue);
     }
   }
-  
+
   return formattedQuery;
-} 
+}

@@ -1,9 +1,10 @@
-import JiraClient from 'jira-client';
-import * as dotenv from 'dotenv';
-import { convertToADF, formatJQL } from '../utils/formatters.js';
+import JiraClient from "jira-client";
+import * as dotenv from "dotenv";
+import { convertToADF, formatJQL } from "../utils/formatters.js";
 import type {
   CreateIssueArgs,
   GetIssuesArgs,
+  SearchIssuesArgs,
   UpdateIssueArgs,
   GetUserArgs,
   CreateIssueLinkArgs,
@@ -17,11 +18,36 @@ import type {
   GetProjectArgs,
   IssueType,
   JiraField,
-  IssueLinkType
-} from '../types/index.js';
+  IssueLinkType,
+} from "../types/index.js";
 
 // Load environment variables
 dotenv.config();
+
+/**
+ * Initialize logging level
+ */
+const LOG_LEVEL = process.env.LOG_LEVEL || "info";
+
+/**
+ * Custom logging function that respects log level
+ */
+function log(message: string, level = "info"): void {
+  const levels = {
+    debug: 0,
+    info: 1,
+    warn: 2,
+    error: 3,
+  };
+
+  const configuredLevel = levels[LOG_LEVEL as keyof typeof levels] || 1;
+  const messageLevel = levels[level as keyof typeof levels] || 1;
+
+  if (messageLevel >= configuredLevel) {
+    const prefix = `[${level.toUpperCase()}]`;
+    console.log(`${prefix} ${message}`);
+  }
+}
 
 /**
  * Service class for interacting with the Jira API
@@ -38,16 +64,16 @@ export class JiraService {
     const host = process.env.JIRA_HOST;
     const email = process.env.JIRA_EMAIL;
     const apiToken = process.env.JIRA_API_TOKEN;
-    const apiVersion = process.env.JIRA_API_VERSION || '3';
-    
+    const apiVersion = process.env.JIRA_API_VERSION || "3";
+
     if (!host || !email || !apiToken) {
       throw new Error(
-        'Missing required environment variables: JIRA_HOST, JIRA_EMAIL, and JIRA_API_TOKEN are required'
+        "Missing required environment variables: JIRA_HOST, JIRA_EMAIL, and JIRA_API_TOKEN are required",
       );
     }
 
     this.client = new JiraClient({
-      protocol: 'https',
+      protocol: "https",
       host,
       username: email,
       password: apiToken,
@@ -55,16 +81,18 @@ export class JiraService {
       strictSSL: true,
     });
 
-    this.defaultFields = (process.env.JIRA_CUSTOM_FIELDS?.split(',') || [
-      'summary',
-      'description',
-      'status',
-      'priority',
-      'assignee',
-      'issuetype',
-      'parent',
-      'subtasks',
-    ]).map(field => field.trim());
+    this.defaultFields = (
+      process.env.JIRA_CUSTOM_FIELDS?.split(",") || [
+        "summary",
+        "description",
+        "status",
+        "priority",
+        "assignee",
+        "issuetype",
+        "parent",
+        "subtasks",
+      ]
+    ).map((field) => field.trim());
   }
 
   /**
@@ -86,7 +114,7 @@ export class JiraService {
       return user.accountId;
     } catch (error: any) {
       if (error.statusCode === 401) {
-        throw new Error('Authentication failed. Check your Jira credentials.');
+        throw new Error("Authentication failed. Check your Jira credentials.");
       }
       throw error;
     }
@@ -108,7 +136,7 @@ export class JiraService {
       }));
     } catch (error: any) {
       if (error.statusCode === 401) {
-        throw new Error('Authentication failed. Check your Jira credentials.');
+        throw new Error("Authentication failed. Check your Jira credentials.");
       }
       throw error;
     }
@@ -133,7 +161,7 @@ export class JiraService {
       }));
     } catch (error: any) {
       if (error.statusCode === 401) {
-        throw new Error('Authentication failed. Check your Jira credentials.');
+        throw new Error("Authentication failed. Check your Jira credentials.");
       }
       throw error;
     }
@@ -155,7 +183,7 @@ export class JiraService {
       }));
     } catch (error: any) {
       if (error.statusCode === 401) {
-        throw new Error('Authentication failed. Check your Jira credentials.');
+        throw new Error("Authentication failed. Check your Jira credentials.");
       }
       throw error;
     }
@@ -170,14 +198,14 @@ export class JiraService {
     try {
       const options: any = {};
       if (expand && expand.length > 0) {
-        options.expand = expand.join(',');
+        options.expand = expand.join(",");
       }
-      
+
       const project = await this.client.getProject(projectKey);
       return project;
     } catch (error: any) {
       if (error.statusCode === 401) {
-        throw new Error('Authentication failed. Check your Jira credentials.');
+        throw new Error("Authentication failed. Check your Jira credentials.");
       }
       if (error.statusCode === 404) {
         throw new Error(`Project ${projectKey} not found`);
@@ -191,15 +219,28 @@ export class JiraService {
    * @param args Query parameters
    * @returns Array of issues
    */
-  async getIssues({ projectKey, jql, maxResults = 50, fields }: GetIssuesArgs): Promise<any[]> {
+  async getIssues({
+    projectKey,
+    jql,
+    maxResults = 50,
+    fields,
+  }: GetIssuesArgs): Promise<any[]> {
     try {
-      const baseJql = jql || '';
-      const finalJql = baseJql
-        ? formatJQL(`project = \${projectKey} AND ${baseJql}`, { projectKey })
-        : formatJQL('project = \${projectKey}', { projectKey });
+      let finalJql: string;
+
+      if (projectKey) {
+        // Project-specific search
+        const baseJql = jql || "";
+        finalJql = baseJql
+          ? formatJQL(`project = \${projectKey} AND ${baseJql}`, { projectKey })
+          : formatJQL("project = ${projectKey}", { projectKey });
+      } else {
+        // Cross-project search - use JQL directly
+        finalJql = jql!;
+      }
 
       const finalFields = fields || this.defaultFields;
-      
+
       const response = await this.client.searchJira(finalJql, {
         maxResults,
         fields: finalFields,
@@ -211,7 +252,7 @@ export class JiraService {
         throw new Error(`Invalid JQL query: ${error.message}`);
       }
       if (error.statusCode === 401) {
-        throw new Error('Authentication failed. Check your Jira credentials.');
+        throw new Error("Authentication failed. Check your Jira credentials.");
       }
       throw error;
     }
@@ -224,17 +265,17 @@ export class JiraService {
    */
   async createIssue(args: CreateIssueArgs): Promise<any> {
     try {
-      const { 
-        projectKey, 
-        summary, 
-        issueType, 
-        description, 
-        assignee, 
-        labels, 
-        components, 
+      const {
+        projectKey,
+        summary,
+        issueType,
+        description,
+        assignee,
+        labels,
+        components,
         priority,
         parent,
-        customFields = {} 
+        customFields = {},
       } = args;
 
       // Prepare the issue data
@@ -272,7 +313,7 @@ export class JiraService {
           };
         } catch (error) {
           // If user lookup fails, continue without assignee
-          console.warn(`Could not find user with email ${assignee}: ${error}`);
+          log(`Could not find user with email ${assignee}: ${error}`, "warn");
         }
       }
 
@@ -283,7 +324,7 @@ export class JiraService {
 
       // Add components if provided
       if (components && components.length > 0) {
-        issueData.fields.components = components.map(name => ({ name }));
+        issueData.fields.components = components.map((name) => ({ name }));
       }
 
       // Add priority if provided
@@ -297,7 +338,7 @@ export class JiraService {
       return issue;
     } catch (error: any) {
       if (error.statusCode === 401) {
-        throw new Error('Authentication failed. Check your Jira credentials.');
+        throw new Error("Authentication failed. Check your Jira credentials.");
       }
       if (error.statusCode === 400) {
         throw new Error(`Invalid issue data: ${error.message}`);
@@ -313,16 +354,16 @@ export class JiraService {
    */
   async updateIssue(args: UpdateIssueArgs): Promise<any> {
     try {
-      const { 
-        issueKey, 
-        summary, 
-        description, 
-        assignee, 
-        status, 
+      const {
+        issueKey,
+        summary,
+        description,
+        assignee,
+        status,
         priority,
         labels,
         components,
-        customFields = {} 
+        customFields = {},
       } = args;
 
       const updateData: any = {
@@ -348,7 +389,7 @@ export class JiraService {
           };
         } catch (error) {
           // If user lookup fails, continue without changing assignee
-          console.warn(`Could not find user with email ${assignee}: ${error}`);
+          log(`Could not find user with email ${assignee}: ${error}`, "warn");
         }
       }
 
@@ -365,7 +406,7 @@ export class JiraService {
 
       // Update components if provided
       if (components) {
-        updateData.fields.components = components.map(name => ({ name }));
+        updateData.fields.components = components.map((name) => ({ name }));
       }
 
       // If status is provided, use transitions instead of direct update
@@ -379,10 +420,13 @@ export class JiraService {
       await this.client.updateIssue(issueKey, updateData);
 
       // Get the updated issue and return it
-      return await this.client.findIssue(issueKey, this.defaultFields.join(','));
+      return await this.client.findIssue(
+        issueKey,
+        this.defaultFields.join(","),
+      );
     } catch (error: any) {
       if (error.statusCode === 401) {
-        throw new Error('Authentication failed. Check your Jira credentials.');
+        throw new Error("Authentication failed. Check your Jira credentials.");
       }
       if (error.statusCode === 404) {
         throw new Error(`Issue ${args.issueKey} not found`);
@@ -399,13 +443,19 @@ export class JiraService {
    * @param args Bulk update parameters
    * @returns Success message and failures array
    */
-  async bulkUpdateIssues(args: BulkUpdateIssuesArgs): Promise<{ message: string; successes: string[]; failures: { issueKey: string; error: string }[] }> {
-    const { 
-      issueKeys, 
-      summary, 
-      description, 
-      assignee, 
-      status, 
+  async bulkUpdateIssues(
+    args: BulkUpdateIssuesArgs,
+  ): Promise<{
+    message: string;
+    successes: string[];
+    failures: { issueKey: string; error: string }[];
+  }> {
+    const {
+      issueKeys,
+      summary,
+      description,
+      assignee,
+      status,
       priority,
       addLabels,
       removeLabels,
@@ -413,7 +463,7 @@ export class JiraService {
       addComponents,
       removeComponents,
       setComponents,
-      customFields
+      customFields,
     } = args;
 
     const successes: string[] = [];
@@ -425,7 +475,10 @@ export class JiraService {
       try {
         accountId = await this.getUserAccountId({ email: assignee });
       } catch (error: any) {
-        console.warn(`Could not find user with email ${assignee}: ${error.message}`);
+        log(
+          `Could not find user with email ${assignee}: ${error.message}`,
+          "warn",
+        );
       }
     }
 
@@ -433,7 +486,10 @@ export class JiraService {
     for (const issueKey of issueKeys) {
       try {
         // Get current issue data for fields that need merging (labels, components)
-        const currentIssue = await this.client.findIssue(issueKey, 'labels,components');
+        const currentIssue = await this.client.findIssue(
+          issueKey,
+          "labels,components",
+        );
 
         const updateData: any = {
           fields: {
@@ -470,48 +526,58 @@ export class JiraService {
           // Modify existing labels
           const currentLabels = currentIssue.fields.labels || [];
           let newLabels = [...currentLabels];
-          
+
           if (addLabels) {
             // Add only non-existing labels
-            addLabels.forEach(label => {
+            addLabels.forEach((label) => {
               if (!newLabels.includes(label)) {
                 newLabels.push(label);
               }
             });
           }
-          
+
           if (removeLabels) {
             // Remove specified labels
-            newLabels = newLabels.filter(label => !removeLabels.includes(label));
+            newLabels = newLabels.filter(
+              (label) => !removeLabels.includes(label),
+            );
           }
-          
+
           updateData.fields.labels = newLabels;
         }
 
         // Handle components
         if (setComponents) {
           // Replace all components
-          updateData.fields.components = setComponents.map(name => ({ name }));
+          updateData.fields.components = setComponents.map((name) => ({
+            name,
+          }));
         } else if (addComponents || removeComponents) {
           // Modify existing components
-          const currentComponents = (currentIssue.fields.components || []).map((c: any) => c.name);
+          const currentComponents = (currentIssue.fields.components || []).map(
+            (c: any) => c.name,
+          );
           let newComponents = [...currentComponents];
-          
+
           if (addComponents) {
             // Add only non-existing components
-            addComponents.forEach(comp => {
+            addComponents.forEach((comp) => {
               if (!newComponents.includes(comp)) {
                 newComponents.push(comp);
               }
             });
           }
-          
+
           if (removeComponents) {
             // Remove specified components
-            newComponents = newComponents.filter(comp => !removeComponents.includes(comp));
+            newComponents = newComponents.filter(
+              (comp) => !removeComponents.includes(comp),
+            );
           }
-          
-          updateData.fields.components = newComponents.map(name => ({ name }));
+
+          updateData.fields.components = newComponents.map((name) => ({
+            name,
+          }));
         }
 
         // Update the issue
@@ -527,7 +593,7 @@ export class JiraService {
 
         successes.push(issueKey);
       } catch (error: any) {
-        const errorMessage = error.message || 'Unknown error';
+        const errorMessage = error.message || "Unknown error";
         failures.push({ issueKey, error: errorMessage });
       }
     }
@@ -547,15 +613,15 @@ export class JiraService {
   async addWatcher(args: AddWatcherArgs): Promise<{ message: string }> {
     try {
       const { issueKey, username } = args;
-      
+
       // Get the account ID for the username
       const accountId = await this.getUserAccountId({ email: username });
-      
+
       await this.client.addWatcher(issueKey, accountId);
       return { message: `Added ${username} as a watcher to ${issueKey}` };
     } catch (error: any) {
       if (error.statusCode === 401) {
-        throw new Error('Authentication failed. Check your Jira credentials.');
+        throw new Error("Authentication failed. Check your Jira credentials.");
       }
       if (error.statusCode === 404) {
         throw new Error(`Issue ${args.issueKey} not found`);
@@ -569,18 +635,22 @@ export class JiraService {
    * @param args Link parameters
    * @returns Success message
    */
-  async createIssueLink(args: CreateIssueLinkArgs): Promise<{ message: string }> {
+  async createIssueLink(
+    args: CreateIssueLinkArgs,
+  ): Promise<{ message: string }> {
     try {
       const { inwardIssueKey, outwardIssueKey, linkType, comment } = args;
 
       // Get link type information
       const linkTypes = await this.listLinkTypes();
       const matchedLinkType = linkTypes.find(
-        type => type.name.toLowerCase() === linkType.toLowerCase()
+        (type) => type.name.toLowerCase() === linkType.toLowerCase(),
       );
 
       if (!matchedLinkType) {
-        throw new Error(`Link type "${linkType}" not found. Available types: ${linkTypes.map(t => t.name).join(', ')}`);
+        throw new Error(
+          `Link type "${linkType}" not found. Available types: ${linkTypes.map((t) => t.name).join(", ")}`,
+        );
       }
 
       const linkData: any = {
@@ -602,15 +672,15 @@ export class JiraService {
       }
 
       await this.client.issueLink(linkData);
-      return { 
-        message: `Created ${matchedLinkType.name} link between ${outwardIssueKey} (${matchedLinkType.outward}) and ${inwardIssueKey} (${matchedLinkType.inward})` 
+      return {
+        message: `Created ${matchedLinkType.name} link between ${outwardIssueKey} (${matchedLinkType.outward}) and ${inwardIssueKey} (${matchedLinkType.inward})`,
       };
     } catch (error: any) {
       if (error.statusCode === 401) {
-        throw new Error('Authentication failed. Check your Jira credentials.');
+        throw new Error("Authentication failed. Check your Jira credentials.");
       }
       if (error.statusCode === 404) {
-        throw new Error('One or both of the specified issues were not found');
+        throw new Error("One or both of the specified issues were not found");
       }
       if (error.statusCode === 400) {
         throw new Error(`Invalid link data: ${error.message}`);
@@ -626,18 +696,18 @@ export class JiraService {
    */
   async deleteIssue(args: DeleteIssueArgs): Promise<{ message: string }> {
     try {
-      const { issueKey, deleteSubtasks = false } = args;
+      const { issueKey } = args;
       await this.client.deleteIssue(issueKey);
       return { message: `Issue ${issueKey} deleted successfully` };
     } catch (error: any) {
       if (error.statusCode === 401) {
-        throw new Error('Authentication failed. Check your Jira credentials.');
+        throw new Error("Authentication failed. Check your Jira credentials.");
       }
       if (error.statusCode === 404) {
         throw new Error(`Issue ${args.issueKey} not found`);
       }
       if (error.statusCode === 403) {
-        throw new Error('You do not have permission to delete this issue');
+        throw new Error("You do not have permission to delete this issue");
       }
       throw error;
     }
@@ -648,7 +718,9 @@ export class JiraService {
    * @param args Bulk delete parameters
    * @returns Success message
    */
-  async bulkDeleteIssues(args: BulkDeleteIssuesArgs): Promise<{ message: string, failures: string[] }> {
+  async bulkDeleteIssues(
+    args: BulkDeleteIssuesArgs,
+  ): Promise<{ message: string; failures: string[] }> {
     const { issueKeys } = args;
     const failures: string[] = [];
 
@@ -678,7 +750,7 @@ export class JiraService {
       return response.transitions || [];
     } catch (error: any) {
       if (error.statusCode === 401) {
-        throw new Error('Authentication failed. Check your Jira credentials.');
+        throw new Error("Authentication failed. Check your Jira credentials.");
       }
       if (error.statusCode === 404) {
         throw new Error(`Issue ${args.issueKey} not found`);
@@ -692,55 +764,63 @@ export class JiraService {
    * @param args Transition parameters
    * @returns Success message
    */
-  async transitionIssue(args: TransitionIssueArgs): Promise<{ message: string }> {
+  async transitionIssue(
+    args: TransitionIssueArgs,
+  ): Promise<{ message: string }> {
     try {
       const { issueKey, transitionId, transitionName, comment, fields } = args;
-      
+
       let transitionIdToUse = transitionId;
-      
+
       // If transition name is provided but no ID, look up the ID
       if (!transitionId && transitionName) {
         const transitions = await this.getTransitions({ issueKey });
         const matchedTransition = transitions.find(
-          (t: any) => t.name.toLowerCase() === transitionName.toLowerCase()
+          (t: any) => t.name.toLowerCase() === transitionName.toLowerCase(),
         );
-        
+
         if (!matchedTransition) {
-          throw new Error(`Transition "${transitionName}" not found. Available transitions: ${transitions.map((t: any) => t.name).join(', ')}`);
+          throw new Error(
+            `Transition "${transitionName}" not found. Available transitions: ${transitions.map((t: any) => t.name).join(", ")}`,
+          );
         }
-        
+
         transitionIdToUse = matchedTransition.id;
       }
-      
+
       if (!transitionIdToUse) {
-        throw new Error('Either transitionId or transitionName must be provided');
+        throw new Error(
+          "Either transitionId or transitionName must be provided",
+        );
       }
-      
+
       const transitionData: any = {
         transition: {
           id: transitionIdToUse,
         },
       };
-      
+
       if (comment) {
         transitionData.update = {
-          comment: [{
-            add: {
-              body: convertToADF(comment),
+          comment: [
+            {
+              add: {
+                body: convertToADF(comment),
+              },
             },
-          }],
+          ],
         };
       }
-      
+
       if (fields) {
         transitionData.fields = fields;
       }
-      
+
       await this.client.transitionIssue(issueKey, transitionData);
       return { message: `Issue ${issueKey} transitioned successfully` };
     } catch (error: any) {
       if (error.statusCode === 401) {
-        throw new Error('Authentication failed. Check your Jira credentials.');
+        throw new Error("Authentication failed. Check your Jira credentials.");
       }
       if (error.statusCode === 404) {
         throw new Error(`Issue ${args.issueKey} not found`);
@@ -760,20 +840,20 @@ export class JiraService {
   async addComment(args: AddCommentArgs): Promise<any> {
     try {
       const { issueKey, body, visibility } = args;
-      
+
       const commentData: any = {
         body: convertToADF(body),
       };
-      
+
       if (visibility) {
         commentData.visibility = visibility;
       }
-      
+
       const response = await this.client.addComment(issueKey, commentData);
       return response;
     } catch (error: any) {
       if (error.statusCode === 401) {
-        throw new Error('Authentication failed. Check your Jira credentials.');
+        throw new Error("Authentication failed. Check your Jira credentials.");
       }
       if (error.statusCode === 404) {
         throw new Error(`Issue ${args.issueKey} not found`);
@@ -781,4 +861,34 @@ export class JiraService {
       throw error;
     }
   }
-} 
+
+  /**
+   * Search for issues across all projects using JQL
+   * @param args Search parameters
+   * @returns Array of issues
+   */
+  async searchIssues({
+    jql,
+    maxResults = 50,
+    fields,
+  }: SearchIssuesArgs): Promise<any[]> {
+    try {
+      const finalFields = fields || this.defaultFields;
+
+      const response = await this.client.searchJira(jql, {
+        maxResults,
+        fields: finalFields,
+      });
+
+      return response.issues || [];
+    } catch (error: any) {
+      if (error.statusCode === 400) {
+        throw new Error(`Invalid JQL query: ${error.message}`);
+      }
+      if (error.statusCode === 401) {
+        throw new Error("Authentication failed. Check your Jira credentials.");
+      }
+      throw error;
+    }
+  }
+}
